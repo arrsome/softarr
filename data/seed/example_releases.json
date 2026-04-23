@@ -1,0 +1,14 @@
+[
+  {
+    "name": "VS Code 1.96.0",
+    "version": "1.96.0",
+    "source_type": "github",
+    "source_origin": "https://github.com/microsoft/vscode/releases/tag/1.96.0"
+  },
+  {
+    "name": "Node.js v22.12.0",
+    "version": "22.12.0",
+    "source_type": "vendor",
+    "source_origin": "https://nodejs.org/en/download/"
+  }
+]

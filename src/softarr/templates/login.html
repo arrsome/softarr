@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Softarr - Sign In</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            400: '#5aadff', 500: '#2196f3',
+                            600: '#1e90ff', 700: '#1a7de0',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background: #1a1a1a; color: #e5e5e5; }
+
+        /* ACC-05: Visible focus outlines */
+        :focus-visible {
+            outline: 2px solid #1e90ff;
+            outline-offset: 2px;
+        }
+
+        .login-input {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            background: #2b2b2b;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #e5e5e5;
+        }
+        .login-input:focus {
+            border-color: #1e90ff;
+            outline: none;
+            box-shadow: 0 0 0 1px rgba(30,144,255,0.35);
+        }
+        .login-input::placeholder {
+            color: #666;
+        }
+    </style>
+</head>
+<body class="h-full flex items-center justify-center">
+    <!-- ACC-03: <main> landmark wraps the login form -->
+    <main class="w-full max-w-sm mx-4" aria-label="Sign in to Softarr">
+        <!-- Login card -->
+        <div style="border:1px solid #3a3a3a;border-radius:6px;overflow:hidden">
+            <!-- Card header -- logo banner -->
+            <div class="flex items-center justify-center py-5" style="background:#2d2d2d;border-bottom:1px solid #3a3a3a">
+                <img src="/static/images/logo.svg" alt="Softarr" style="height:48px;width:auto">
+            </div>
+
+            <!-- Card body -->
+            <div class="px-8 py-8" style="background:#1e1e1e">
+                <!-- ACC-03: h1 as the single page heading -->
+                <h1 class="text-center font-bold tracking-widest uppercase mb-6"
+                    style="font-size:0.75rem;letter-spacing:0.12em;color:#ffffff">
+                    SIGN IN TO CONTINUE
+                </h1>
+
+                {% if error %}
+                <!-- ACC-12: descriptive error message, associated via aria-describedby on inputs -->
+                <div id="login-error" role="alert" class="mb-4 px-3 py-2 text-sm text-red-400"
+                     style="background:#2d1515;border:1px solid #5a2020;border-radius:4px">
+                    {{ error }}
+                </div>
+                {% endif %}
+
+                <form action="/auth/login" method="POST" novalidate>
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                    <div class="space-y-3">
+                        <!-- ACC-06: every input has a <label> -->
+                        <div>
+                            <label for="login-username" class="sr-only">Username</label>
+                            <input id="login-username"
+                                   type="text"
+                                   name="username"
+                                   placeholder="Username"
+                                   required
+                                   autofocus
+                                   autocomplete="username"
+                                   class="login-input"
+                                   {% if error %}aria-describedby="login-error"{% endif %}>
+                        </div>
+                        <div>
+                            <label for="login-password" class="sr-only">Password</label>
+                            <input id="login-password"
+                                   type="password"
+                                   name="password"
+                                   placeholder="Password"
+                                   required
+                                   autocomplete="current-password"
+                                   class="login-input"
+                                   {% if error %}aria-describedby="login-error"{% endif %}>
+                        </div>
+
+                        <div class="flex items-center gap-2 pt-1">
+                            <input type="checkbox" name="remember_me" id="remember-me"
+                                   style="accent-color:#1e90ff;width:1rem;height:1rem">
+                            <label for="remember-me" class="text-sm" style="color:#b0b0b0">Remember Me</label>
+                        </div>
+
+                        <button type="submit"
+                                class="w-full py-2.5 text-sm font-semibold text-white"
+                                style="background:#1e90ff;border-radius:4px;margin-top:0.75rem;border:none;cursor:pointer"
+                                onmouseover="this.style.background='#1a7de0'"
+                                onmouseout="this.style.background='#1e90ff'">
+                            Login
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Copyright footer -->
+        <p class="text-center mt-4" style="font-size:0.7rem;color:#555">
+            &copy; 2025 - Softarr
+        </p>
+        <p class="text-center mt-1" style="font-size:0.65rem;color:#444">
+            Default credentials are printed to the server console on first startup.
+        </p>
+        <p class="text-center mt-1" style="font-size:0.65rem;color:#444">
+            v{{ app_version }}
+        </p>
+    </main>
+</body>
+</html>

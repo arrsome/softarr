@@ -1,0 +1,590 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+    {% if release %}
+    <a href="/staging" class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">&larr; Back to staging</a>
+
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <div class="flex items-start justify-between mb-6">
+            <div>
+                <h3 class="text-xl font-semibold">{{ release.name }}</h3>
+                <p class="text-sm text-zinc-400 mt-1">Version {{ release.version }}</p>
+            </div>
+            <div class="flex gap-2 flex-wrap justify-end">
+                <!-- Workflow State -->
+                {% set ws = release.workflow_state.value %}
+                {% if ws == 'discovered' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">Discovered</span>
+                {% elif ws == 'staged' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-900/50 text-blue-300 border border-blue-800/50">Staged</span>
+                {% elif ws == 'under_review' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-900/50 text-purple-300 border border-purple-800/50">Under Review</span>
+                {% elif ws == 'approved' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-900/50 text-green-300 border border-green-800/50">Approved</span>
+                {% elif ws == 'rejected' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-900/50 text-red-300 border border-red-800/50">Rejected</span>
+                {% elif ws == 'queued_for_download' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-cyan-900/50 text-cyan-300 border border-cyan-800/50">Queued</span>
+                {% elif ws == 'downloaded' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-brand-900/50 text-brand-300 border border-brand-800/50">Downloaded</span>
+                {% endif %}
+
+                <!-- Trust Badge -->
+                {% if release.trust_status.value == 'developer_verified' %}
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-900/50 text-green-300 border border-green-800/50"
+                      data-tooltip-title="Developer Verified"
+                      data-tooltip="Publisher signature or hash matches known-good data from the allowlist entry.">
+                    <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                    Developer Verified
+                </span>
+                {% elif release.trust_status.value == 'admin_verified' %}
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-900/50 text-blue-300 border border-blue-800/50"
+                      data-tooltip-title="Admin Verified"
+                      data-tooltip="Manually reviewed and approved by an administrator.">
+                    <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                    Admin Verified
+                </span>
+                {% else %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700"
+                      data-tooltip="Publisher signature and hash could not be confirmed against known-good sources.">Unverified</span>
+                {% endif %}
+
+                <!-- Flag Badge -->
+                {% if release.flag_status.value == 'blocked' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-900/50 text-red-300 border border-red-800/50"
+                      data-tooltip-title="Blocked"
+                      data-tooltip="Hash mismatch, invalid signature, or known-malicious detection. Do not approve without investigation.">Blocked</span>
+                {% elif release.flag_status.value == 'restricted' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-orange-900/50 text-orange-300 border border-orange-800/50"
+                      data-tooltip-title="Restricted"
+                      data-tooltip="Multiple risk indicators detected. Manual review is strongly recommended.">Restricted</span>
+                {% elif release.flag_status.value == 'warning' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-900/50 text-amber-300 border border-amber-800/50"
+                      data-tooltip-title="Warning"
+                      data-tooltip="One or more risk indicators detected. Review flag reasons below before approving.">Warning</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Verification note -->
+        <div class="bg-zinc-800/40 border border-zinc-700/50 rounded-lg p-3 mb-6">
+            <p class="text-[11px] text-zinc-500">Signature and hash checks are heuristic-based in this release. "Developer Verified" means the publisher metadata matches the allowlist entry. Cryptographic signature verification is planned for a future version.</p>
+        </div>
+
+        <!-- Metadata Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-6">
+            <div>
+                <span class="text-zinc-500 text-xs"
+                      data-tooltip="Expected publisher from the software allowlist entry. Used as a reference for trust verification.">Publisher</span>
+                <p class="text-zinc-200">{{ release.publisher or '--' }}</p>
+            </div>
+            <div>
+                <span class="text-zinc-500 text-xs"
+                      data-tooltip="github: official GitHub release. usenet: Newznab indexer result. torznab: torrent indexer result.">Source</span>
+                <p class="text-zinc-200">{{ release.source_type }}</p>
+            </div>
+            <div>
+                <span class="text-zinc-500 text-xs"
+                      data-tooltip="Combined match confidence score from source trust and metadata quality (0-100%). Higher is better.">Confidence</span>
+                <p class="text-zinc-200">{{ '%.0f' | format(release.confidence_score * 100) }}%</p>
+            </div>
+            <div>
+                <span class="text-zinc-500 text-xs">OS</span>
+                <p class="text-zinc-200">{{ release.supported_os | join(', ') if release.supported_os else '--' }}</p>
+            </div>
+            <div>
+                <span class="text-zinc-500 text-xs">Architecture</span>
+                <p class="text-zinc-200">{{ release.architecture or 'Any' }}</p>
+            </div>
+            <div>
+                <span class="text-zinc-500 text-xs">Source URL</span>
+                <p class="truncate">
+                    {% if release.source_origin %}
+                    <a href="{{ release.source_origin }}" target="_blank" rel="noopener" class="text-brand-400 hover:text-brand-300 text-xs">{{ release.source_origin }}</a>
+                    {% else %}
+                    <span class="text-zinc-400">--</span>
+                    {% endif %}
+                </p>
+            </div>
+            <!-- Derived metadata (client-side) -->
+            <div id="release-group-field" class="hidden">
+                <span class="text-zinc-500 text-xs"
+                      data-tooltip="Release group parsed from the release name. Common in Usenet/scene releases.">Release Group</span>
+                <p id="release-group-value" class="text-zinc-200 font-mono text-sm">--</p>
+            </div>
+            <div id="install-type-field" class="hidden">
+                <span class="text-zinc-500 text-xs"
+                      data-tooltip="Estimated install type based on filename conventions.">Install Type</span>
+                <p id="install-type-value" class="text-zinc-200">--</p>
+            </div>
+            <div>
+                <span class="text-zinc-500 text-xs">Workflow Changed</span>
+                <p class="text-zinc-200 text-xs">
+                    {% if release.workflow_changed_at %}
+                    {{ release.workflow_changed_at.strftime('%Y-%m-%d %H:%M UTC') }}
+                    {% if release.workflow_changed_by %} by {{ release.workflow_changed_by }}{% endif %}
+                    {% else %}--{% endif %}
+                </p>
+            </div>
+        </div>
+
+        <!-- Flag Reasons -->
+        {% if release.flag_reasons %}
+        <div class="bg-amber-950/30 border border-amber-900/50 rounded-lg p-4 mb-6">
+            <h4 class="text-xs font-medium text-amber-400 mb-2">Flag Reasons</h4>
+            <ul class="space-y-1">
+                {% for reason in release.flag_reasons %}
+                <li class="text-sm text-amber-200/80">{{ reason }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <!-- Override History -->
+        {% if release.overrides %}
+        <div class="bg-zinc-800/30 border border-zinc-700/50 rounded-lg p-4 mb-6">
+            <h4 class="text-xs font-medium text-zinc-400 mb-2">Override History</h4>
+            <div class="space-y-2">
+                {% for ov in release.overrides %}
+                <div class="text-xs text-zinc-400 flex justify-between">
+                    <span>
+                        Overridden by <span class="text-zinc-300">{{ ov.overridden_by }}</span>
+                        {% if ov.override_reason %} -- "{{ ov.override_reason }}"{% endif %}
+                    </span>
+                    <span class="text-zinc-600">{{ ov.override_timestamp.strftime('%Y-%m-%d %H:%M') if ov.override_timestamp else '' }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Actions -->
+        <div class="flex flex-wrap gap-3 pt-4 border-t border-zinc-800" x-data="{ showOverride: false, showSabModal: false, sabCategory: '{{ sab_category }}', sabPendingFile: null, sabPendingInput: null }">
+            {% set ws = release.workflow_state.value %}
+
+            {% if ws == 'discovered' %}
+            <button hx-post="/api/v1/staging/transition/{{ release.id }}"
+                    hx-vals='{"target_state": "staged"}'
+                    hx-headers='{"Content-Type": "application/json", "X-CSRF-Token": "{{ csrf_token }}"}'
+                    hx-swap="none" hx-on::after-request="location.reload()"
+                    class="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                Stage for Review
+            </button>
+            {% endif %}
+
+            {% if ws in ('staged', 'under_review') %}
+            <button hx-post="/api/v1/staging/approve/{{ release.id }}"
+                    hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'
+                    hx-swap="none" hx-on::after-request="location.reload()"
+                    class="bg-brand-600 hover:bg-brand-700 px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                Approve
+            </button>
+            <button hx-post="/api/v1/staging/transition/{{ release.id }}"
+                    hx-vals='{"target_state": "rejected"}'
+                    hx-headers='{"Content-Type": "application/json", "X-CSRF-Token": "{{ csrf_token }}"}'
+                    hx-swap="none" hx-on::after-request="location.reload()"
+                    class="bg-red-700 hover:bg-red-600 px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                Reject
+            </button>
+            {% endif %}
+
+            {% if release.flag_status.value != 'none' and ws not in ('approved', 'downloaded') %}
+            <button @click="showOverride = !showOverride"
+                    class="bg-amber-700 hover:bg-amber-600 px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                Override Flags
+            </button>
+            {% endif %}
+
+            {% if ws == 'rejected' %}
+            <button hx-post="/api/v1/staging/transition/{{ release.id }}"
+                    hx-vals='{"target_state": "staged"}'
+                    hx-headers='{"Content-Type": "application/json", "X-CSRF-Token": "{{ csrf_token }}"}'
+                    hx-swap="none" hx-on::after-request="location.reload()"
+                    class="bg-zinc-600 hover:bg-zinc-500 px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                Re-stage
+            </button>
+            {% endif %}
+
+            {% if ws == 'approved' %}
+            <button @click="sabPendingFile = null; sabPendingInput = null; showSabModal = true"
+                    class="bg-cyan-600 hover:bg-cyan-700 px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                Send to SABnzbd
+            </button>
+            <label class="bg-zinc-700 hover:bg-zinc-600 px-5 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer">
+                Upload NZB
+                <input type="file" accept=".nzb" class="hidden" @change="if ($event.target.files && $event.target.files[0]) { sabPendingFile = $event.target.files[0]; sabPendingInput = $event.target; showSabModal = true; }">
+            </label>
+            <button onclick="exportManifest('{{ release.id }}')"
+                    class="bg-zinc-600 hover:bg-zinc-500 px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                Export Manifest
+            </button>
+            {% endif %}
+
+            {% if ws == 'queued_for_download' %}
+            <span class="text-xs text-cyan-400 flex items-center gap-1.5">
+                <svg class="w-4 h-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Queued in SABnzbd
+            </span>
+            {% endif %}
+
+            {% if ws == 'downloaded' %}
+            <span class="text-xs text-brand-400 flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Downloaded
+            </span>
+            {% endif %}
+
+            <!-- SABnzbd Download Modal -->
+            <div x-show="showSabModal" x-transition class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showSabModal = false">
+                <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-700 max-w-sm w-full mx-4">
+                    <h4 class="text-lg font-semibold mb-1" x-text="sabPendingFile ? 'Upload NZB to SABnzbd' : 'Send to SABnzbd'"></h4>
+                    <p class="text-sm text-zinc-400 mb-4">Confirm the SABnzbd category for this download.</p>
+                    <label class="block text-xs text-zinc-500 mb-1">Category</label>
+                    <input type="text" x-model="sabCategory"
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:border-brand-500">
+                    <div class="flex gap-3">
+                        <button @click="showSabModal = false; if (sabPendingFile) { doUploadNzb('{{ release.id }}', sabPendingFile, sabPendingInput, sabCategory); } else { doSendToSabnzbd('{{ release.id }}', sabCategory); }"
+                                class="bg-cyan-600 hover:bg-cyan-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                            Confirm
+                        </button>
+                        <button type="button" @click="showSabModal = false; if (sabPendingInput) { sabPendingInput.value = ''; sabPendingInput = null; sabPendingFile = null; }"
+                                class="bg-zinc-700 hover:bg-zinc-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Override Modal -->
+            <div x-show="showOverride" x-transition class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showOverride = false">
+                <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-700 max-w-md w-full mx-4">
+                    <h4 class="text-lg font-semibold mb-2">Proceed at Your Own Risk</h4>
+                    <p class="text-sm text-zinc-400 mb-4">This release has been flagged. Overriding will mark it as admin-verified for this release only. Future releases are not affected.</p>
+                    {% if release.flag_status.value in ('restricted', 'blocked') %}
+                    <p class="text-xs text-amber-400 mb-3">A reason is required for {{ release.flag_status.value }} releases.</p>
+                    {% endif %}
+                    <div x-data="{ reason: '' }">
+                        <label class="block text-xs text-zinc-500 mb-1">Reason{% if release.flag_status.value in ('restricted', 'blocked') %} (required){% endif %}</label>
+                        <textarea x-model="reason" rows="2"
+                                  class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:border-brand-500"></textarea>
+                        <div class="flex gap-3">
+                            <button hx-post="/api/v1/staging/override/{{ release.id }}"
+                                    hx-headers='{"Content-Type": "application/json", "X-CSRF-Token": "{{ csrf_token }}"}'
+                                    :hx-vals="JSON.stringify({reason: reason})"
+                                    hx-swap="none" hx-on::after-request="location.reload()"
+                                    class="bg-amber-600 hover:bg-amber-500 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                                Confirm Override
+                            </button>
+                            <button type="button" @click="showOverride = false"
+                                    class="bg-zinc-700 hover:bg-zinc-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if release and release.release_notes %}
+    <!-- Release Notes -->
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+        <h3 class="text-sm font-semibold text-zinc-300 mb-3 uppercase tracking-wide">Release Notes</h3>
+        <pre class="text-xs text-zinc-400 whitespace-pre-wrap max-h-64 overflow-y-auto font-mono leading-relaxed">{{ release.release_notes }}</pre>
+    </div>
+    {% endif %}
+
+    <!-- Hash Intelligence Section -->
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800" x-data="hashIntel('{{ release.id }}')">
+        <button @click="open = !open; if (open && !loaded) loadIntel()"
+                class="w-full flex items-center justify-between px-5 py-4 text-left">
+            <span class="text-sm font-medium text-zinc-300">Hash Intelligence</span>
+            <svg :class="open ? 'rotate-180' : ''" class="w-4 h-4 text-zinc-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        <div x-show="open" x-transition class="px-5 pb-5">
+            <div x-show="loading" class="text-xs text-zinc-500 py-4">Loading...</div>
+            <div x-show="!loading && records.length === 0" class="text-xs text-zinc-500 py-2">
+                No hash intelligence records found. Records are created during analysis when hash sources are enabled.
+            </div>
+            <table x-show="!loading && records.length > 0" class="w-full text-xs">
+                <thead>
+                    <tr class="border-b border-zinc-800">
+                        <th scope="col" class="text-left py-2 text-zinc-500 font-medium">Source</th>
+                        <th scope="col" class="text-left py-2 text-zinc-500 font-medium">Verdict</th>
+                        <th scope="col" class="text-left py-2 text-zinc-500 font-medium">Confidence</th>
+                        <th scope="col" class="text-left py-2 text-zinc-500 font-medium">Checked</th>
+                    </tr>
+                </thead>
+                    <template x-for="r in records" :key="r.id">
+                        <tbody>
+                        <tr class="border-b border-zinc-800/40">
+                            <td class="py-2 font-mono" x-text="r.source"></td>
+                            <td class="py-2">
+                                <span :class="{
+                                    'text-green-400': r.verdict === 'known_good' || r.verdict === 'vendor_matched',
+                                    'text-red-400': r.verdict === 'known_bad',
+                                    'text-zinc-400': r.verdict === 'unknown',
+                                    'text-blue-400': r.verdict === 'signature_verified'
+                                }" x-text="r.verdict.replace('_', ' ')"></span>
+                            </td>
+                            <td class="py-2 text-zinc-400" x-text="r.confidence != null ? Math.round(r.confidence * 100) + '%' : '--'"></td>
+                            <td class="py-2 text-zinc-500" x-text="r.checked_at ? r.checked_at.substring(0, 16).replace('T', ' ') : '--'"></td>
+                        </tr>
+                        <template x-if="r.source === 'virustotal' && r.raw_response">
+                            <tr class="border-b border-zinc-800/20">
+                                <td colspan="4" class="pb-2 pl-2">
+                                    <template x-if="r.raw_response.found">
+                                        <span class="text-zinc-500 text-[11px]">
+                                            <span x-text="(r.raw_response.total_engines - r.raw_response.malicious_count) + ' / ' + r.raw_response.total_engines + ' engines clean'"></span>
+                                            <template x-if="r.raw_response.permalink">
+                                                <a :href="r.raw_response.permalink" target="_blank" rel="noopener"
+                                                   class="ml-3 text-brand-400 hover:text-brand-300">View on VirusTotal</a>
+                                            </template>
+                                        </span>
+                                    </template>
+                                    <template x-if="!r.raw_response.found">
+                                        <span class="text-zinc-600 text-[11px]">Not yet indexed by VirusTotal</span>
+                                    </template>
+                                </td>
+                            </tr>
+                        </template>
+                        </tbody>
+                    </template>
+            </table>
+        </div>
+    </div>
+
+    <!-- AI Assistant Panel (only shown when AI is enabled in settings) -->
+    {% if ai_enabled %}
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800"
+         x-data="{
+             open: false,
+             scenario: null,
+             userHint: '',
+             response: null,
+             loading: false,
+             error: null,
+             context: {{ (release.name + ' v' + release.version + ((' by ' + release.publisher) if release.publisher else '') + ' via ' + release.source_type) | tojson }},
+             async ask(sc) {
+                 this.scenario = sc;
+                 this.loading = true;
+                 this.response = null;
+                 this.error = null;
+                 var csrf = document.querySelector('meta[name=\'csrf-token\']').content;
+                 try {
+                     var resp = await fetch('/api/v1/ai/ask', {
+                         method: 'POST',
+                         headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf},
+                         body: JSON.stringify({scenario: sc, context: this.context, user_hint: this.userHint || null}),
+                     });
+                     var data = await resp.json();
+                     if (resp.ok) {
+                         this.response = data.response;
+                     } else if (resp.status === 429) {
+                         this.error = 'Rate limit reached. Please wait before making another request.';
+                     } else if (resp.status === 503) {
+                         this.error = 'AI assistant is not configured. Enable it in Settings.';
+                     } else {
+                         this.error = data.detail || 'An error occurred.';
+                     }
+                 } catch (e) {
+                     this.error = 'Request failed: ' + e.message;
+                 } finally {
+                     this.loading = false;
+                 }
+             }
+         }">
+        <button @click="open = !open"
+                class="w-full flex items-center justify-between px-5 py-4 text-left">
+            <span class="text-sm font-medium text-zinc-300">AI Assistant</span>
+            <svg :class="open ? 'rotate-180' : ''" class="w-4 h-4 text-zinc-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        <div x-show="open" x-transition class="px-5 pb-5 space-y-4">
+            <p class="text-xs text-zinc-500">
+                Ask the AI assistant about this release. Responses are scoped to software safety and discovery.
+            </p>
+            <div class="flex flex-wrap gap-2">
+                <button @click="ask('discovery')"
+                        :disabled="loading"
+                        :class="scenario === 'discovery' ? 'bg-brand-700 text-brand-100 border-brand-600' : 'bg-zinc-800 text-zinc-400 border-zinc-700'"
+                        class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50">
+                    Find alternatives
+                </button>
+                <button @click="ask('risk')"
+                        :disabled="loading"
+                        :class="scenario === 'risk' ? 'bg-brand-700 text-brand-100 border-brand-600' : 'bg-zinc-800 text-zinc-400 border-zinc-700'"
+                        class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50">
+                    Assess risk
+                </button>
+                <button @click="ask('comparison')"
+                        :disabled="loading"
+                        :class="scenario === 'comparison' ? 'bg-brand-700 text-brand-100 border-brand-600' : 'bg-zinc-800 text-zinc-400 border-zinc-700'"
+                        class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50">
+                    Compare versions
+                </button>
+            </div>
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Additional context (optional)</label>
+                <input type="text" x-model="userHint"
+                       placeholder="e.g. I need a portable version for Windows..."
+                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+                       maxlength="500">
+            </div>
+            <div x-show="loading" class="text-xs text-zinc-500 py-2">Thinking...</div>
+            <div x-show="error"
+                 class="bg-red-900/30 border border-red-800/50 rounded-lg p-3 text-xs text-red-300"
+                 x-text="error"
+                 aria-live="polite"></div>
+            <div x-show="response"
+                 class="bg-zinc-800/50 rounded-lg p-4 text-sm text-zinc-200 whitespace-pre-wrap"
+                 x-text="response"
+                 aria-live="polite"></div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="bg-zinc-900 rounded-xl p-8 border border-zinc-800 text-center">
+        <p class="text-zinc-400">Release not found.</p>
+        <a href="/staging" class="text-brand-400 hover:text-brand-300 text-sm mt-2 inline-block">Back to staging</a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+    // -------------------------------------------------------------------------
+    // Derived metadata: release group and estimated install type
+    // -------------------------------------------------------------------------
+    (function () {
+        var releaseName = {{ release.name | tojson if release else '""' }};
+        if (!releaseName) return;
+
+        // Release group: match trailing -GROUPNAME pattern (2-12 uppercase/digit chars)
+        var groupMatch = releaseName.match(/-([A-Za-z0-9]{2,12})$/);
+        if (groupMatch) {
+            var groupField = document.getElementById('release-group-field');
+            var groupValue = document.getElementById('release-group-value');
+            if (groupField && groupValue) {
+                groupField.classList.remove('hidden');
+                groupValue.textContent = groupMatch[1].toUpperCase();
+            }
+        }
+
+        // Estimated install type from filename conventions
+        var nameLower = releaseName.toLowerCase();
+        var installType = null;
+        if (/portable/.test(nameLower)) {
+            installType = 'Portable';
+        } else if (/setup|installer|install/.test(nameLower) || /\.(msi|exe)(\.|$)/.test(nameLower)) {
+            installType = 'Installer';
+        } else if (/\.(zip|tar|7z|rar|gz)(\.|$)/.test(nameLower)) {
+            installType = 'Archive';
+        }
+        if (installType) {
+            var typeField = document.getElementById('install-type-field');
+            var typeValue = document.getElementById('install-type-value');
+            if (typeField && typeValue) {
+                typeField.classList.remove('hidden');
+                typeValue.textContent = installType;
+            }
+        }
+    })();
+
+    function hashIntel(releaseId) {
+        return {
+            open: false,
+            loaded: false,
+            loading: false,
+            records: [],
+            async loadIntel() {
+                this.loading = true;
+                try {
+                    var resp = await fetch('/api/v1/releases/' + releaseId + '/hash-intelligence');
+                    if (resp.ok) {
+                        this.records = await resp.json();
+                    }
+                } catch (e) {
+                    console.error('Hash intelligence fetch failed:', e);
+                } finally {
+                    this.loading = false;
+                    this.loaded = true;
+                }
+            }
+        };
+    }
+
+    async function doSendToSabnzbd(releaseId, category) {
+        try {
+            var resp = await fetch('/api/v1/actions/sabnzbd/send', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+                body: JSON.stringify({release_id: releaseId, category: category || null}),
+            });
+            var data = await resp.json();
+            if (resp.ok) {
+                alert('Queued in SABnzbd.');
+                location.reload();
+            } else {
+                alert('Error: ' + (data.detail || 'Unknown error'));
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function doUploadNzb(releaseId, file, input, category) {
+        var formData = new FormData();
+        formData.append('nzb_file', file);
+        if (category) formData.append('category', category);
+        try {
+            var resp = await fetch('/api/v1/actions/sabnzbd/send-nzb?release_id=' + releaseId, {
+                method: 'POST',
+                headers: {'X-CSRF-Token': csrfToken},
+                body: formData,
+            });
+            var data = await resp.json();
+            if (resp.ok) {
+                alert('NZB uploaded and queued in SABnzbd.');
+                location.reload();
+            } else {
+                alert('Error: ' + (data.detail || 'Unknown error'));
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+        if (input) input.value = '';
+    }
+
+    async function exportManifest(releaseId) {
+        try {
+            var resp = await fetch('/api/v1/actions/export', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+                body: JSON.stringify({release_id: releaseId, action: 'export_manifest'}),
+            });
+            var data = await resp.json();
+            if (resp.ok) {
+                // Download as JSON file
+                var blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'softarr-manifest-' + releaseId.substring(0, 8) + '.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            } else {
+                alert('Error: ' + (data.detail || 'Unknown error'));
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+</script>
+{% endblock %}

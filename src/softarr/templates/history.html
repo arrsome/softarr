@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6" x-data="historyPage()">
+    <div class="flex items-center justify-between">
+        <p class="text-sm text-zinc-400">Activity timeline -- recent actions across all releases and software entries.</p>
+        <div class="flex items-center gap-3">
+            <a href="/api/v1/settings/audit-log/export"
+               class="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-lg text-sm transition-colors">
+                Export CSV
+            </a>
+            <button @click="fetchHistory()"
+                    class="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-lg text-sm transition-colors">
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="bg-zinc-900 rounded-xl p-4 border border-zinc-800 flex gap-3 flex-wrap">
+        <select x-model="filterAction" @change="fetchHistory()"
+                class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-brand-500">
+            <option value="">All Actions</option>
+            <option value="state_transition">State Transitions</option>
+            <option value="release_search">Release Searches</option>
+            <option value="download_complete">Download Complete</option>
+            <option value="release_approved">Release Approved</option>
+            <option value="release_rejected">Release Rejected</option>
+        </select>
+        <input type="number" x-model.number="limit" @change="fetchHistory()"
+               min="10" max="500" step="10"
+               class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-brand-500 w-24"
+               placeholder="Limit">
+    </div>
+
+    <!-- Loading state -->
+    <template x-if="loading">
+        <div class="text-zinc-500 text-sm text-center py-10">Loading...</div>
+    </template>
+
+    <!-- Empty state -->
+    <template x-if="!loading && entries.length === 0">
+        <div class="bg-zinc-900 rounded-xl p-12 border border-zinc-800 text-center">
+            <div class="text-zinc-500 text-sm">No history entries found.</div>
+        </div>
+    </template>
+
+    <!-- Timeline -->
+    <template x-if="!loading && entries.length > 0">
+        <div class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+            <table class="w-full text-sm">
+                <thead class="border-b border-zinc-800 bg-zinc-800/40">
+                    <tr>
+                        <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">Time</th>
+                        <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">Action</th>
+                        <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">Entity</th>
+                        <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">User</th>
+                        <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">Details</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-800">
+                    <template x-for="entry in entries" :key="entry.id">
+                        <tr class="hover:bg-zinc-800/30 transition-colors">
+                            <td class="px-4 py-3 text-zinc-500 text-xs whitespace-nowrap"
+                                x-text="new Date(entry.timestamp).toLocaleString()"></td>
+                            <td class="px-4 py-3">
+                                <span :class="actionClass(entry.action)"
+                                      class="px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide"
+                                      x-text="entry.action.replace(/_/g, ' ')"></span>
+                            </td>
+                            <td class="px-4 py-3 text-zinc-400 text-xs">
+                                <span x-text="entry.entity_type || '--'"></span>
+                                <template x-if="entry.entity_id">
+                                    <a :href="entry.entity_type === 'release' ? '/releases/' + entry.entity_id : '#'"
+                                       class="ml-1 text-zinc-600 hover:text-zinc-400 transition-colors font-mono text-[10px]"
+                                       x-text="entry.entity_id ? entry.entity_id.substring(0, 8) + '...' : ''"></a>
+                                </template>
+                            </td>
+                            <td class="px-4 py-3 text-zinc-400 text-xs" x-text="entry.user || 'system'"></td>
+                            <td class="px-4 py-3 text-zinc-500 text-xs font-mono">
+                                <span x-text="formatDetails(entry.details)"></span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </template>
+</div>
+
+<script>
+function historyPage() {
+    return {
+        entries: [],
+        loading: true,
+        filterAction: '',
+        limit: 100,
+        actionClass(action) {
+            const map = {
+                state_transition: 'bg-blue-900/50 text-blue-300',
+                release_search: 'bg-zinc-800 text-zinc-400',
+                download_complete: 'bg-brand-900/50 text-brand-400',
+                release_approved: 'bg-green-900/50 text-green-400',
+                release_rejected: 'bg-red-900/50 text-red-400',
+                settings_changed: 'bg-amber-900/50 text-amber-400',
+            };
+            return map[action] || 'bg-zinc-800 text-zinc-400';
+        },
+        formatDetails(details) {
+            if (!details || Object.keys(details).length === 0) return '--';
+            return Object.entries(details)
+                .map(([k, v]) => k + '=' + v)
+                .join(', ');
+        },
+        async fetchHistory() {
+            this.loading = true;
+            try {
+                let url = '/api/v1/settings/audit-log?limit=' + this.limit;
+                const r = await fetch(url);
+                if (r.ok) {
+                    const resp = await r.json();
+                    let data = resp.logs || resp;
+                    if (this.filterAction) {
+                        data = data.filter(e => e.action === this.filterAction);
+                    }
+                    this.entries = data;
+                }
+            } catch (e) {
+                console.error('Failed to fetch history', e);
+            } finally {
+                this.loading = false;
+            }
+        },
+        init() {
+            this.fetchHistory();
+        }
+    };
+}
+</script>
+{% endblock %}

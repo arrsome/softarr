@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    env:
+      # Point uv at a stable, cacheable path. actions/cache below restores
+      # this directory before `mise run uv_full` so wheel downloads are
+      # reused across runs even though `uv sync --reinstall` rebuilds .venv.
+      UV_CACHE_DIR: /tmp/.uv-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Cache the mise-managed tool installs (Python 3.14.4, uv, ...).
+      # jdx/mise-action caches the mise binary itself but not the tools it
+      # installs under ~/.local/share/mise, so we do it explicitly here.
+      # Keyed on .mise.toml so a tool version bump invalidates cleanly.
+      - name: Cache mise tool installs
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/mise
+          key: mise-tools-${{ runner.os }}-${{ hashFiles('.mise.toml') }}
+          restore-keys: |
+            mise-tools-${{ runner.os }}-
+
+      # Cache the uv download cache. Keyed on uv.lock so any dependency
+      # change invalidates, with a fallback restore-key for partial hits.
+      - name: Cache uv downloads
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.uv-cache
+          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - name: Set up mise
+        uses: jdx/mise-action@v4
+
+      - name: Install dependencies
+        run: mise run uv_full
+
+      # Drop unused cache entries before actions/cache saves the directory,
+      # per https://docs.astral.sh/uv/guides/integration/github/.
+      - name: Prune uv cache
+        run: mise exec -- uv cache prune --ci
+
+      - name: Lint (ruff)
+        run: mise run lint
+
+      - name: Format check (ruff)
+        run: mise run ruff_format_check
+
+      - name: Run tests
+        run: mise run test

@@ -1,0 +1,83 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "softarr"
+version = "1.3.18"
+description = "Software Release Manager inspired by the *arr stack"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "alembic>=1.18.4",
+    "bcrypt>=5.0.0",
+    "fastapi>=0.135.3",
+    "gunicorn>=25.3.0",
+    "httpx>=0.28.1",
+    "itsdangerous>=2.2.0",
+    "jinja2>=3.1.6",
+    "limits>=5.8.0",
+    "pydantic-settings>=2.13.1",
+    "pyotp>=2.9",
+    "python-gnupg>=0.5.6",
+    "python-json-logger>=2.0",
+    "python-multipart>=0.0.26",
+    "pywebpush>=2.3.0",
+    "qrcode[pil]>=7.4",
+    "slowapi>=0.1.9",
+    "sqlalchemy[asyncio]>=2.0.49",
+    "uvicorn[standard]>=0.43.0",
+]
+
+[project.scripts]
+softarr-init = "softarr.cli.init:cli"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.10",
+]
+test = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.1.0",
+]
+
+[tool.uv]
+link-mode = "copy" # Fixes issue with PyCharm not picking up changes
+compile-bytecode = true
+
+[tool.ruff.lint]
+# "F": Pyflakes errors (e.g., undefined names, unused imports)
+# "E": pycodestyle errors
+# "W": pycodestyle warnings
+# "I001": isort formatting rule for import sorting
+# "F401": Specific rule for unused imports
+select = ["F", "E", "W", "I001", "F401"]
+# E501 is line length, we don't care about that if we can't fix it
+# F841 is unused variable, we don't care about that if we can't fix it
+ignore = ["E501", "F841"]
+
+exclude = [
+    ".git",
+    ".ruff_cache",
+    ".venv",
+    "__pypackages__",
+    "tmp",
+    "dev",
+    "/locales"
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning:slowapi",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+    "ignore::RuntimeWarning:unittest.mock",
+]
+# To enable logging in pytest, uncomment the following lines
+log_cli = true
+
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"

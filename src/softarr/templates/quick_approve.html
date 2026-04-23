@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-lg mx-auto space-y-6">
+
+    <div class="flex items-center justify-between">
+        <p class="text-sm text-zinc-400">
+            Review one release at a time with swipe gestures or keyboard shortcuts.
+        </p>
+        <a href="/staging-queue"
+           class="text-brand-400 hover:text-brand-300 text-xs font-medium">
+            Full Queue View
+        </a>
+    </div>
+
+    {% if current_release %}
+
+    <!-- Progress indicator -->
+    <div class="text-center text-xs text-zinc-500">
+        {{ queue_count }} release{{ 's' if queue_count != 1 else '' }} in queue
+    </div>
+
+    <!-- Release card with swipe gesture support -->
+    <div class="swipe-card bg-zinc-900 rounded-xl border border-zinc-800 p-6 space-y-5 relative select-none"
+         data-release-id="{{ current_release.id }}"
+         style="touch-action:pan-y">
+
+        <!-- Release name and version -->
+        <div class="text-center space-y-1">
+            <h2 class="text-xl font-semibold text-zinc-100">{{ current_release.name }}</h2>
+            <p class="text-sm text-zinc-400">{{ current_release.version }}</p>
+        </div>
+
+        <!-- Metadata badges -->
+        <div class="flex flex-wrap items-center justify-center gap-2">
+
+            <!-- Trust status -->
+            {% if current_release.trust_status.value == 'developer_verified' %}
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-900/50 text-green-300"
+                  data-tooltip="Developer Verified: publisher signature or hash matches known-good data.">
+                Verified
+            </span>
+            {% elif current_release.trust_status.value == 'admin_verified' %}
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-900/50 text-blue-300"
+                  data-tooltip="Admin Verified: manually approved by an administrator.">
+                Admin Verified
+            </span>
+            {% else %}
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-500"
+                  data-tooltip="Unverified: publisher signature and hash could not be confirmed.">
+                Unverified
+            </span>
+            {% endif %}
+
+            <!-- Flag status -->
+            {% if current_release.flag_status.value == 'blocked' %}
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-900/50 text-red-300"
+                  data-tooltip="Blocked: hash mismatch, invalid signature, or known-malicious detection.">
+                Blocked
+            </span>
+            {% elif current_release.flag_status.value == 'restricted' %}
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-orange-900/50 text-orange-300"
+                  data-tooltip="Restricted: multiple risk indicators detected. Manual review recommended.">
+                Restricted
+            </span>
+            {% elif current_release.flag_status.value == 'warning' %}
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-900/50 text-amber-300"
+                  data-tooltip="Warning: one or more risk indicators detected.">
+                Warning
+            </span>
+            {% endif %}
+
+            <!-- Source type -->
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400"
+                  data-tooltip="Source adapter that discovered this release.">
+                {{ current_release.source_type }}
+            </span>
+        </div>
+
+        <!-- Confidence score -->
+        <div class="text-center">
+            <div class="text-3xl font-bold"
+                 style="color: {% if current_release.confidence_score >= 0.7 %}#4ade80{% elif current_release.confidence_score >= 0.4 %}#fbbf24{% else %}#f87171{% endif %}">
+                {{ '%.0f' | format(current_release.confidence_score * 100) }}%
+            </div>
+            <div class="text-xs text-zinc-500 mt-1"
+                 data-tooltip="Match confidence: combined score from source trust and metadata quality.">
+                Confidence
+            </div>
+        </div>
+
+        <!-- Publisher (if known) -->
+        {% if current_release.publisher %}
+        <div class="text-center text-xs text-zinc-500">
+            Publisher: <span class="text-zinc-300">{{ current_release.publisher }}</span>
+        </div>
+        {% endif %}
+
+        <!-- Flag reasons -->
+        {% if current_release.flag_reasons %}
+        <div class="bg-zinc-800/50 rounded-lg px-4 py-3 space-y-1">
+            {% for reason in current_release.flag_reasons %}
+            <p class="text-xs text-amber-400">{{ reason }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Swipe hint (visible on touch devices) -->
+        <div class="text-center text-[10px] text-zinc-700 hidden sm:block">
+            Swipe right to approve -- swipe left to reject
+        </div>
+    </div>
+
+    <!-- Action buttons (keyboard-friendly alternative to swipe) -->
+    <div class="grid grid-cols-2 gap-4"
+         x-data="{
+             loading: false,
+             result: '',
+             resultOk: true,
+             async act(action) {
+                 if (this.loading) return;
+                 this.loading = true;
+                 this.result = '';
+                 try {
+                     var csrf = document.querySelector('meta[name=\'csrf-token\']').content;
+                     var releaseId = '{{ current_release.id }}';
+                     var endpoint = action === 'approve'
+                         ? '/api/v1/staging/approve/' + releaseId
+                         : '/api/v1/staging/transition/' + releaseId;
+                     var opts = { method: 'POST', headers: {'X-CSRF-Token': csrf} };
+                     if (action === 'reject') {
+                         opts.headers['Content-Type'] = 'application/json';
+                         opts.body = JSON.stringify({target_state: 'rejected'});
+                     }
+                     var resp = await fetch(endpoint, opts);
+                     if (resp.ok) {
+                         this.resultOk = true;
+                         this.result = action === 'approve' ? 'Approved.' : 'Rejected.';
+                         setTimeout(() => location.reload(), 600);
+                     } else {
+                         this.resultOk = false;
+                         var data = await resp.json();
+                         this.result = 'Error: ' + (data.detail || 'Unknown error');
+                     }
+                 } catch (e) {
+                     this.resultOk = false;
+                     this.result = 'Error: ' + e.message;
+                 } finally {
+                     this.loading = false;
+                 }
+             }
+         }">
+        <button @click="act('approve')"
+                :disabled="loading"
+                class="bg-green-700 hover:bg-green-600 disabled:opacity-50 py-4 rounded-xl text-sm font-semibold transition-colors"
+                aria-label="Approve {{ current_release.name }}">
+            Approve
+        </button>
+        <button @click="act('reject')"
+                :disabled="loading"
+                class="bg-red-900/70 hover:bg-red-800 disabled:opacity-50 py-4 rounded-xl text-sm font-semibold transition-colors"
+                aria-label="Reject {{ current_release.name }}">
+            Reject
+        </button>
+        <div x-show="result"
+             class="col-span-2 text-center text-sm"
+             :class="resultOk ? 'text-green-400' : 'text-red-400'"
+             x-text="result"
+             aria-live="polite"></div>
+    </div>
+
+    <!-- View full details link -->
+    <div class="text-center">
+        <a href="/releases/{{ current_release.id }}"
+           class="text-brand-400 hover:text-brand-300 text-xs">
+            View full details
+        </a>
+    </div>
+
+    {% else %}
+
+    <!-- Empty queue state -->
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-12 text-center space-y-4">
+        <svg class="w-12 h-12 mx-auto text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+        </svg>
+        <h3 class="text-lg font-medium text-zinc-300">Queue is empty</h3>
+        <p class="text-sm text-zinc-500">No releases are currently staged for review.</p>
+        <div class="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+            <a href="/staging-queue"
+               class="bg-brand-600 hover:bg-brand-700 px-5 py-2 rounded-lg text-sm font-medium transition-colors">
+                View Staging Queue
+            </a>
+            <a href="/releases/search"
+               class="bg-zinc-800 hover:bg-zinc-700 px-5 py-2 rounded-lg text-sm font-medium text-zinc-300 transition-colors">
+                Search for Releases
+            </a>
+        </div>
+    </div>
+
+    {% endif %}
+
+</div>
+{% endblock %}

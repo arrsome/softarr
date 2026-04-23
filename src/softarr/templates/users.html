@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6" x-data="usersPage()">
+    <div class="flex items-center justify-between">
+        <p class="text-sm text-zinc-400">Manage user accounts and roles.</p>
+        <button @click="showForm = !showForm"
+                class="bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            Add User
+        </button>
+    </div>
+
+    <!-- Add User Form -->
+    <div x-show="showForm" x-transition class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h4 class="text-sm font-medium text-zinc-300 mb-4">New User</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Username</label>
+                <input type="text" x-model="newUser.username"
+                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Password</label>
+                <input type="password" x-model="newUser.password"
+                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Role</label>
+                <select x-model="newUser.role"
+                        class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+                    <option value="admin">Admin</option>
+                    <option value="viewer">Viewer</option>
+                </select>
+            </div>
+        </div>
+        <div class="flex gap-3 mt-4">
+            <button @click="createUser()"
+                    class="bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                Create
+            </button>
+            <button @click="showForm = false; createError = ''"
+                    class="bg-zinc-700 hover:bg-zinc-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                Cancel
+            </button>
+        </div>
+        <div x-show="createError" class="mt-3 text-xs text-red-400 bg-red-900/20 rounded-lg p-2" x-text="createError"></div>
+    </div>
+
+    <!-- Users Table -->
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+        <div x-show="loading" class="text-sm text-zinc-500 text-center py-10">Loading...</div>
+        <template x-if="!loading && users.length === 0">
+            <div class="text-sm text-zinc-500 text-center py-10">No users found.</div>
+        </template>
+        <table x-show="!loading && users.length > 0" class="w-full text-sm">
+            <thead class="border-b border-zinc-800 bg-zinc-800/40">
+                <tr>
+                    <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">Username</th>
+                    <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">Role</th>
+                    <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">Status</th>
+                    <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">Last Login</th>
+                    <th scope="col" class="text-right px-4 py-3 font-medium text-zinc-400">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-800">
+                <template x-for="u in users" :key="u.id">
+                    <tr class="hover:bg-zinc-800/30 transition-colors">
+                        <td class="px-4 py-3 font-medium text-zinc-100" x-text="u.username"></td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
+                                  :class="u.role === 'admin' ? 'bg-brand-900/50 text-brand-300' : 'bg-zinc-700 text-zinc-400'"
+                                  x-text="u.role"></span>
+                        </td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
+                                  :class="u.is_active ? 'bg-green-900/40 text-green-300' : 'bg-zinc-800 text-zinc-500'"
+                                  x-text="u.is_active ? 'Active' : 'Inactive'"></span>
+                        </td>
+                        <td class="px-4 py-3 text-zinc-500 text-xs"
+                            x-text="u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'"></td>
+                        <td class="px-4 py-3 text-right">
+                            <div class="flex items-center justify-end gap-3">
+                                <!-- Role toggle -->
+                                <button @click="toggleRole(u)"
+                                        class="text-zinc-400 hover:text-zinc-200 text-xs transition-colors"
+                                        x-text="u.role === 'admin' ? 'Make Viewer' : 'Make Admin'"></button>
+                                <!-- Reset password -->
+                                <button @click="promptResetPassword(u)"
+                                        class="text-zinc-400 hover:text-zinc-200 text-xs transition-colors">
+                                    Reset Password
+                                </button>
+                                <!-- Deactivate -->
+                                <button @click="deactivateUser(u)" x-show="u.is_active"
+                                        class="text-zinc-500 hover:text-red-400 text-xs transition-colors">
+                                    Deactivate
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Reset Password Modal -->
+    <div x-show="resetModal.show" x-transition class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="resetModal.show = false">
+        <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-700 max-w-sm w-full mx-4">
+            <h4 class="text-lg font-semibold mb-1">Reset Password</h4>
+            <p class="text-sm text-zinc-400 mb-4">Set a new password for <span class="text-zinc-200" x-text="resetModal.username"></span>.</p>
+            <input type="password" x-model="resetModal.newPassword" placeholder="New password"
+                   class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:border-brand-500">
+            <div x-show="resetModal.error" class="text-xs text-red-400 mb-3" x-text="resetModal.error"></div>
+            <div class="flex gap-3">
+                <button @click="doResetPassword()"
+                        class="bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    Reset
+                </button>
+                <button @click="resetModal.show = false; resetModal.newPassword = ''; resetModal.error = ''"
+                        class="bg-zinc-700 hover:bg-zinc-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="actionError" class="bg-red-900/30 border border-red-800/50 rounded-lg p-3 text-sm text-red-300" x-text="actionError"></div>
+</div>
+
+<script>
+function usersPage() {
+    return {
+        users: [],
+        loading: true,
+        showForm: false,
+        newUser: { username: '', password: '', role: 'admin' },
+        createError: '',
+        actionError: '',
+        resetModal: { show: false, userId: null, username: '', newPassword: '', error: '' },
+
+        async fetchUsers() {
+            this.loading = true;
+            try {
+                var resp = await fetch('/api/v1/users/');
+                if (resp.ok) this.users = await resp.json();
+            } catch (e) { console.error('Failed to fetch users', e); }
+            this.loading = false;
+        },
+
+        async createUser() {
+            this.createError = '';
+            if (!this.newUser.username || !this.newUser.password) {
+                this.createError = 'Username and password are required.';
+                return;
+            }
+            var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            var resp = await fetch('/api/v1/users/', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+                body: JSON.stringify(this.newUser),
+            });
+            if (resp.ok) {
+                this.showForm = false;
+                this.newUser = { username: '', password: '', role: 'admin' };
+                await this.fetchUsers();
+            } else {
+                var d = await resp.json();
+                this.createError = d.detail || 'Failed to create user.';
+            }
+        },
+
+        async toggleRole(u) {
+            var newRole = u.role === 'admin' ? 'viewer' : 'admin';
+            var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            var resp = await fetch('/api/v1/users/' + u.id, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+                body: JSON.stringify({role: newRole}),
+            });
+            if (resp.ok) {
+                u.role = newRole;
+            } else {
+                var d = await resp.json();
+                this.actionError = d.detail || 'Failed to update role.';
+            }
+        },
+
+        async deactivateUser(u) {
+            if (!confirm('Deactivate user "' + u.username + '"?')) return;
+            var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            var resp = await fetch('/api/v1/users/' + u.id, {
+                method: 'DELETE',
+                headers: {'X-CSRF-Token': csrfToken},
+            });
+            if (resp.ok || resp.status === 204) {
+                u.is_active = false;
+            } else {
+                var d = await resp.json();
+                this.actionError = d.detail || 'Failed to deactivate user.';
+            }
+        },
+
+        promptResetPassword(u) {
+            this.resetModal = { show: true, userId: u.id, username: u.username, newPassword: '', error: '' };
+        },
+
+        async doResetPassword() {
+            this.resetModal.error = '';
+            if (!this.resetModal.newPassword) {
+                this.resetModal.error = 'Password is required.';
+                return;
+            }
+            var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            var resp = await fetch('/api/v1/users/' + this.resetModal.userId + '/reset-password', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+                body: JSON.stringify({new_password: this.resetModal.newPassword}),
+            });
+            if (resp.ok || resp.status === 204) {
+                this.resetModal.show = false;
+                this.resetModal.newPassword = '';
+            } else {
+                var d = await resp.json();
+                this.resetModal.error = d.detail || 'Failed to reset password.';
+            }
+        },
+
+        init() {
+            this.fetchUsers();
+        }
+    };
+}
+</script>
+{% endblock %}

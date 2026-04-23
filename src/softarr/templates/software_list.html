@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6" x-data="{ showForm: false }">
+    <div class="flex justify-between items-center">
+        <p class="text-sm text-zinc-400">Manage your approved software allowlist.</p>
+        <button @click="showForm = !showForm"
+                class="bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            Add Software
+        </button>
+    </div>
+
+    <!-- Add Software Form -->
+    <div x-show="showForm" x-transition class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h4 class="text-sm font-medium text-zinc-300 mb-4">New Software Entry</h4>
+        <form id="add-software-form"
+              onsubmit="event.preventDefault(); submitSoftwareForm(this);"
+              class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Canonical Name</label>
+                <input type="text" name="canonical_name" required
+                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Expected Publisher</label>
+                <input type="text" name="expected_publisher"
+                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Aliases (comma-separated)</label>
+                <input type="text" name="aliases" placeholder="alias1, alias2"
+                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Architecture</label>
+                <select name="architecture"
+                        class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+                    <option value="">Any</option>
+                    <option value="x64">x64</option>
+                    <option value="arm64">ARM64</option>
+                    <option value="x86">x86</option>
+                </select>
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-xs text-zinc-500 mb-1">Supported OS</label>
+                <div class="flex gap-4">
+                    <label class="flex items-center gap-2 text-sm text-zinc-300">
+                        <input type="checkbox" name="supported_os" value="windows" class="rounded bg-zinc-800 border-zinc-600">
+                        Windows
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-zinc-300">
+                        <input type="checkbox" name="supported_os" value="linux" class="rounded bg-zinc-800 border-zinc-600">
+                        Linux
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-zinc-300">
+                        <input type="checkbox" name="supported_os" value="macos" class="rounded bg-zinc-800 border-zinc-600">
+                        macOS
+                    </label>
+                </div>
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-xs text-zinc-500 mb-1">Notes</label>
+                <textarea name="notes" rows="2"
+                          class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"></textarea>
+            </div>
+            <div class="md:col-span-2 flex gap-3">
+                <button type="submit"
+                        class="bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    Save Entry
+                </button>
+                <button type="button" @click="showForm = false"
+                        class="bg-zinc-700 hover:bg-zinc-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Software Table -->
+    <div class="bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800">
+        <div class="px-5 py-3 bg-zinc-800/30 border-b border-zinc-800 flex items-center justify-between text-xs text-zinc-400">
+            <span>{{ total }} entr{{ 'y' if total == 1 else 'ies' }}</span>
+            <span>Page {{ page }} of {{ total_pages }}</span>
+        </div>
+        <table class="w-full">
+            <thead class="bg-zinc-800/50">
+                <tr>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Name</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Publisher</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">OS</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Adapter</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Current Version</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Status</th>
+                    <th scope="col" class="w-56 px-5 py-3"></th>
+                </tr>
+            </thead>
+            <tbody id="software-table-body" class="divide-y divide-zinc-800/50">
+                {% for software in softwares %}
+                <tr class="hover:bg-zinc-800/30 transition-colors" id="sw-row-{{ software.id }}">
+                    <td class="px-5 py-3.5 font-medium text-sm">
+                        <a href="/software/{{ software.id }}" class="hover:text-brand-400 transition-colors">{{ software.canonical_name }}</a>
+                    </td>
+                    <td class="px-5 py-3.5 text-sm text-zinc-400">{{ software.expected_publisher or '--' }}</td>
+                    <td class="px-5 py-3.5 text-sm text-zinc-400">{{ software.supported_os | join(', ') }}</td>
+                    <td class="px-5 py-3.5">
+                        <select onchange="setPreferredAdapter('{{ software.id }}', this.value)"
+                                class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-brand-500">
+                            <option value="usenet"
+                                    {% if software.preferred_adapter == 'usenet' or not software.preferred_adapter or software.preferred_adapter not in ('torznab',) %}selected{% endif %}>
+                                Usenet / NZB
+                            </option>
+                            {% if torrent_enabled %}
+                            <option value="torznab"
+                                    {% if software.preferred_adapter == 'torznab' %}selected{% endif %}>
+                                Torrent
+                            </option>
+                            {% endif %}
+                        </select>
+                    </td>
+                    <td class="px-5 py-3.5 text-sm text-zinc-400" id="sw-version-{{ software.id }}">
+                        {% set cv = version_map.get(software.id | string) %}
+                        {% if cv %}
+                        <span class="font-mono">{{ cv }}</span>
+                        {% else %}
+                        <span class="text-zinc-600">--</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-5 py-3.5">
+                        {% if software.is_active %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-brand-900/50 text-brand-300">Active</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-zinc-800 text-zinc-500">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-5 py-3.5 text-right">
+                        <div class="flex items-center justify-end gap-3">
+                            <button onclick="checkVersion('{{ software.id }}', '{{ software.canonical_name }}')"
+                                    id="check-btn-{{ software.id }}"
+                                    class="text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors">
+                                Check Version
+                            </button>
+                            <a href="/releases/search?software_id={{ software.id }}"
+                               class="text-brand-400 hover:text-brand-300 text-xs font-medium">
+                                View Releases
+                            </a>
+                            <button onclick="deleteSoftware('{{ software.id }}', '{{ software.canonical_name }}')"
+                                    class="text-zinc-600 hover:text-red-400 text-xs font-medium transition-colors"
+                                    title="Delete software entry">
+                                Delete
+                            </button>
+                        </div>
+                        <div id="version-status-{{ software.id }}" class="mt-1 text-right"></div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="px-5 py-10 text-center text-sm text-zinc-500">
+                        No software entries yet. Click "Add Software" to get started.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination controls -->
+    {% if total_pages > 1 %}
+    <div class="flex items-center justify-between mt-2">
+        <div class="text-xs text-zinc-500">
+            Showing {{ ((page - 1) * page_size) + 1 }}--{{ [page * page_size, total] | min }} of {{ total }}
+        </div>
+        <div class="flex items-center gap-2">
+            {% if page > 1 %}
+            <a href="?page={{ page - 1 }}&page_size={{ page_size }}"
+               class="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 transition-colors">
+                Previous
+            </a>
+            {% else %}
+            <span class="px-3 py-1.5 rounded bg-zinc-800/40 text-xs text-zinc-600 cursor-not-allowed">Previous</span>
+            {% endif %}
+
+            <span class="text-xs text-zinc-400">{{ page }} / {{ total_pages }}</span>
+
+            {% if page < total_pages %}
+            <a href="?page={{ page + 1 }}&page_size={{ page_size }}"
+               class="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 transition-colors">
+                Next
+            </a>
+            {% else %}
+            <span class="px-3 py-1.5 rounded bg-zinc-800/40 text-xs text-zinc-600 cursor-not-allowed">Next</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% if show_catalogue %}
+<!-- Open-Source Catalogue -->
+<div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800 mt-6"
+     x-data="catalogueApp()"
+     x-init="loadCatalogue()">
+
+    <!-- Dismissible info banner -->
+    <div x-show="!bannerDismissed" x-transition
+         class="mb-4 flex items-start gap-3 bg-brand-900/20 border border-brand-800/40 rounded-lg p-4">
+        <div class="flex-1 text-xs text-brand-300">
+            Softarr is designed for tracking <strong>open-source software</strong>.
+            Use this catalogue to quickly add popular open-source apps to your library.
+            You can hide this section from <a href="/settings" class="underline hover:text-brand-200">Settings</a>.
+        </div>
+        <button @click="bannerDismissed = true"
+                class="text-brand-500 hover:text-brand-300 text-xs font-medium ml-2 shrink-0">Dismiss</button>
+    </div>
+
+    <h4 class="text-sm font-medium text-zinc-300 mb-1">Open-Source Catalogue</h4>
+    <p class="text-xs text-zinc-500 mb-4">Pre-defined entries for popular open-source apps. Click "Add" to import into your library.</p>
+
+    <!-- Loading state -->
+    <div x-show="loading" class="text-xs text-zinc-500 py-4 text-center">Loading catalogue...</div>
+
+    <!-- Catalogue grid -->
+    <div x-show="!loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <template x-for="entry in catalogue" :key="entry.canonical_name">
+            <div class="bg-zinc-800/50 rounded-lg p-4 flex items-start justify-between gap-3">
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-zinc-200 truncate" x-text="entry.canonical_name"></p>
+                    <p class="text-xs text-zinc-500 mt-0.5 truncate" x-text="entry.expected_publisher || ''"></p>
+                    <div class="flex flex-wrap gap-1 mt-1.5">
+                        <template x-for="tag in (entry.tags || [])" :key="tag">
+                            <span class="px-1.5 py-0.5 rounded text-[10px] bg-zinc-700 text-zinc-400" x-text="tag"></span>
+                        </template>
+                    </div>
+                </div>
+                <button
+                    :disabled="entry.already_added || entry.adding"
+                    @click="addEntry(entry)"
+                    :class="entry.already_added
+                        ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                        : 'bg-brand-600 hover:bg-brand-700 text-white'"
+                    class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-60">
+                    <span x-text="entry.already_added ? 'Added' : (entry.adding ? 'Adding...' : 'Add')"></span>
+                </button>
+            </div>
+        </template>
+    </div>
+
+    <!-- Error state -->
+    <div x-show="error" x-transition class="mt-3 text-xs text-red-400 p-2 bg-red-900/20 rounded-lg" x-text="error"></div>
+</div>
+{% endif %}
+
+<script>
+async function setPreferredAdapter(softwareId, value) {
+    var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    await fetch('/api/v1/software/' + encodeURIComponent(softwareId), {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({preferred_adapter: value || null}),
+    });
+}
+
+function deleteSoftware(softwareId, softwareName) {
+    if (!confirm('Delete "' + softwareName + '"? This will also remove all associated releases.')) return;
+    fetch('/api/v1/software/' + encodeURIComponent(softwareId), {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': getCsrfToken() },
+    }).then(function(resp) {
+        if (resp.ok || resp.status === 204) {
+            var row = document.getElementById('sw-row-' + softwareId);
+            if (row) row.remove();
+        } else {
+            resp.json().then(function(d) { alert('Error: ' + (d.detail || 'Delete failed')); });
+        }
+    }).catch(function(e) { alert('Error: ' + e.message); });
+}
+
+function getCsrfToken() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
+function checkVersion(softwareId, softwareName) {
+    const btn = document.getElementById('check-btn-' + softwareId);
+    const statusEl = document.getElementById('version-status-' + softwareId);
+
+    btn.textContent = 'Checking...';
+    btn.disabled = true;
+    statusEl.innerHTML = '';
+
+    fetch('/api/v1/software/' + softwareId + '/check-version?source_type=usenet')
+        .then(function(resp) {
+            if (!resp.ok) {
+                return resp.json().then(function(d) { throw new Error(d.detail || 'Check failed'); });
+            }
+            return resp.json();
+        })
+        .then(function(data) {
+            btn.textContent = 'Check Version';
+            btn.disabled = false;
+
+            if (data.update_available) {
+                statusEl.innerHTML =
+                    '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-900/40 text-amber-300">' +
+                    'New: ' + escapeHtml(data.latest_found) +
+                    '</span>';
+            } else if (data.latest_found) {
+                statusEl.innerHTML =
+                    '<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-zinc-800 text-zinc-400">' +
+                    'Up to date' +
+                    '</span>';
+            } else {
+                statusEl.innerHTML =
+                    '<span class="text-xs text-zinc-500">No results found</span>';
+            }
+        })
+        .catch(function(err) {
+            btn.textContent = 'Check Version';
+            btn.disabled = false;
+            statusEl.innerHTML =
+                '<span class="text-xs text-red-400">' + escapeHtml(err.message) + '</span>';
+        });
+}
+
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function catalogueApp() {
+    return {
+        catalogue: [],
+        loading: true,
+        error: '',
+        bannerDismissed: false,
+
+        async loadCatalogue() {
+            try {
+                var resp = await fetch('/api/v1/software/catalogue');
+                if (!resp.ok) throw new Error('Failed to load catalogue (HTTP ' + resp.status + ')');
+                var data = await resp.json();
+                this.catalogue = (data.catalogue || []).map(function(e) {
+                    return Object.assign({}, e, {adding: false});
+                });
+            } catch (e) {
+                this.error = e.message;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async addEntry(entry) {
+            entry.adding = true;
+            var csrfToken = getCsrfToken();
+            // Strip client-side tracking fields before sending to the API
+            var payload = Object.assign({}, entry);
+            delete payload.already_added;
+            delete payload.adding;
+            try {
+                var resp = await fetch('/api/v1/software/import', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+                    body: JSON.stringify({software: [payload]}),
+                });
+                if (!resp.ok) throw new Error('Import failed (HTTP ' + resp.status + ')');
+                entry.already_added = true;
+                this.error = '';
+            } catch (e) {
+                this.error = 'Failed to add ' + escapeHtml(entry.canonical_name) + ': ' + e.message;
+            } finally {
+                entry.adding = false;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

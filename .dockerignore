@@ -1,0 +1,57 @@
+# Version control and editor state
+.git
+.gitignore
+.github
+.idea
+.vscode
+.claude
+
+# Local virtualenvs and caches
+.venv
+.venv-*
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Build artefacts
+dist
+build
+*.egg-info
+
+# Tests and docs (not needed at runtime)
+tests
+docs
+
+# Local data / secrets (must never land in the image)
+.env
+.env.*
+!.env.example
+softarr.ini
+softarr.db
+*.sqlite
+*.sqlite3
+*.db
+data/
+dev/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage.xml
+.coverage
+.coverage.*
+htmlcov/
+
+# Node (in case any tooling introduces it later)
+node_modules
+
+# Existing Docker files (not needed inside the image itself)
+Dockerfile
+.dockerignore
+docker-compose*.yml

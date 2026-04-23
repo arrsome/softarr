@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6" x-data="systemHealthPage()">
+    <div class="flex items-center justify-between">
+        <p class="text-sm text-zinc-400">Live status of all system components and background tasks.</p>
+        <button @click="fetchAll()"
+                class="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-lg text-sm transition-colors">
+            Refresh
+        </button>
+    </div>
+
+    <!-- Database -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h3 class="text-sm font-semibold text-zinc-300 mb-4 uppercase tracking-wide">Database</h3>
+        <div class="flex items-center gap-3">
+            <span :class="dbOk ? 'bg-brand-500' : 'bg-red-500'" class="w-2.5 h-2.5 rounded-full shrink-0"></span>
+            <span class="text-sm" x-text="dbOk ? 'Connected' : 'Unavailable'"></span>
+            <span class="text-xs text-zinc-600" x-show="dbChecked && !dbOk" x-text="dbError"></span>
+        </div>
+    </div>
+
+    <!-- Background Tasks -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h3 class="text-sm font-semibold text-zinc-300 mb-4 uppercase tracking-wide">Background Tasks</h3>
+        <div class="space-y-3">
+            <div class="flex items-center gap-3">
+                <span :class="tasks.scheduler ? 'bg-brand-500' : 'bg-zinc-600'" class="w-2.5 h-2.5 rounded-full shrink-0"></span>
+                <span class="text-sm text-zinc-300">Scheduler</span>
+                <span class="text-xs text-zinc-500" x-text="tasks.scheduler ? 'Running' : 'Disabled'"></span>
+            </div>
+            <div class="flex items-center gap-3">
+                <span :class="tasks.retention ? 'bg-brand-500' : 'bg-zinc-600'" class="w-2.5 h-2.5 rounded-full shrink-0"></span>
+                <span class="text-sm text-zinc-300">Retention Task</span>
+                <span class="text-xs text-zinc-500" x-text="tasks.retention ? 'Running' : 'Disabled'"></span>
+            </div>
+            <div class="flex items-center gap-3">
+                <span :class="tasks.hash_recheck ? 'bg-brand-500' : 'bg-zinc-600'" class="w-2.5 h-2.5 rounded-full shrink-0"></span>
+                <span class="text-sm text-zinc-300">Hash Recheck Task</span>
+                <span class="text-xs text-zinc-500" x-text="tasks.hash_recheck ? 'Running' : 'Disabled'"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Indexers -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h3 class="text-sm font-semibold text-zinc-300 mb-4 uppercase tracking-wide">Usenet Indexers</h3>
+        <template x-if="indexers.length === 0">
+            <div class="text-zinc-500 text-sm">No indexers configured.</div>
+        </template>
+        <div class="space-y-2">
+            <template x-for="idx in indexers" :key="idx.id">
+                <div class="flex items-center gap-3 bg-zinc-800/40 rounded-lg px-4 py-2.5">
+                    <span :class="idx.enabled ? 'bg-brand-500' : 'bg-zinc-600'" class="w-2 h-2 rounded-full shrink-0"></span>
+                    <span class="text-sm text-zinc-300" x-text="idx.name"></span>
+                    <span class="text-xs text-zinc-500 ml-auto" x-text="idx.url"></span>
+                    <span class="text-[10px] uppercase px-1.5 py-0.5 rounded"
+                          :class="idx.enabled ? 'bg-brand-900/50 text-brand-400' : 'bg-zinc-700 text-zinc-500'"
+                          x-text="idx.enabled ? 'Enabled' : 'Disabled'"></span>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Adapters -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h3 class="text-sm font-semibold text-zinc-300 mb-4 uppercase tracking-wide">Adapters</h3>
+        <div class="space-y-2">
+            <template x-for="adapter in adapters" :key="adapter.name">
+                <div class="flex items-center gap-3">
+                    <span :class="adapter.enabled ? 'bg-brand-500' : 'bg-zinc-600'" class="w-2.5 h-2.5 rounded-full shrink-0"></span>
+                    <span class="text-sm text-zinc-300" x-text="adapter.name"></span>
+                    <span class="text-xs text-zinc-500" x-text="adapter.enabled ? 'Enabled' : 'Disabled'"></span>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Download Client -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h3 class="text-sm font-semibold text-zinc-300 mb-4 uppercase tracking-wide">Download Client</h3>
+        <template x-if="!downloadClient.configured">
+            <div class="text-zinc-500 text-sm">No download client configured.</div>
+        </template>
+        <template x-if="downloadClient.configured">
+            <div class="space-y-2">
+                <div class="flex items-center gap-3">
+                    <span :class="downloadClient.reachable ? 'bg-brand-500' : 'bg-red-500'" class="w-2.5 h-2.5 rounded-full shrink-0"></span>
+                    <span class="text-sm text-zinc-300"
+                          x-text="downloadClient.type === 'qbittorrent' ? 'qBittorrent' : 'SABnzbd'"></span>
+                    <span class="text-xs text-zinc-500"
+                          x-text="downloadClient.reachable === null ? 'Checking...' : (downloadClient.reachable ? 'Reachable' : 'Unreachable')"></span>
+                    <span class="text-xs text-zinc-600 ml-auto" x-text="downloadClient.url || ''"></span>
+                </div>
+                <div class="flex items-center gap-3 pl-5"
+                     x-show="downloadClient.reachable && downloadClient.queue_depth !== null">
+                    <span class="text-xs text-zinc-500">Queue depth:</span>
+                    <span class="text-xs font-mono text-zinc-300" x-text="downloadClient.queue_depth"></span>
+                </div>
+                <div class="flex items-center gap-3 pl-5"
+                     x-show="downloadClient.reachable && downloadClient.version">
+                    <span class="text-xs text-zinc-500">Version:</span>
+                    <span class="text-xs font-mono text-zinc-300" x-text="downloadClient.version"></span>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Security -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h3 class="text-sm font-semibold text-zinc-300 mb-4 uppercase tracking-wide">Security</h3>
+        <div class="space-y-3">
+            <!-- 2FA -->
+            <div class="flex items-center gap-3">
+                <span :class="security.totp_enabled ? 'bg-brand-500' : 'bg-red-500'"
+                      class="w-2.5 h-2.5 rounded-full shrink-0"></span>
+                <span class="text-sm text-zinc-300">Multi-Factor Authentication (2FA)</span>
+                <span class="text-xs text-zinc-500"
+                      x-text="security.totp_enabled ? 'Enabled' : 'Not enabled -- account at risk'"></span>
+            </div>
+            <!-- Password policy -->
+            <div class="flex items-center gap-3">
+                <span :class="security.password_policy_ok ? 'bg-brand-500' : 'bg-red-500'"
+                      class="w-2.5 h-2.5 rounded-full shrink-0"></span>
+                <span class="text-sm text-zinc-300">Password Policy</span>
+                <span class="text-xs text-zinc-500"
+                      x-text="security.password_policy_ok
+                          ? 'Compliant'
+                          : 'Weak -- enable uppercase, numbers, special characters, and max age'"></span>
+            </div>
+            <!-- Version -->
+            <div class="flex items-center gap-3">
+                <span :class="security.version_ok ? 'bg-brand-500' : 'bg-red-500'"
+                      class="w-2.5 h-2.5 rounded-full shrink-0"></span>
+                <span class="text-sm text-zinc-300">Version</span>
+                <span class="text-xs text-zinc-500">
+                    <template x-if="security.version_current">
+                        <span x-text="'Running v' + security.version_current"></span>
+                    </template>
+                    <template x-if="security.version_latest && security.version_ok">
+                        <span> (up to date)</span>
+                    </template>
+                    <template x-if="security.version_latest && !security.version_ok">
+                        <span x-text="' -- latest is v' + security.version_latest"></span>
+                    </template>
+                    <template x-if="security.version_error">
+                        <span x-text="' -- check failed: ' + security.version_error"></span>
+                    </template>
+                </span>
+            </div>
+            <!-- Anti-piracy filter -->
+            <div class="flex items-center gap-3">
+                <span :class="security.antipiracy_enabled ? 'bg-brand-500' : 'bg-red-500'"
+                      class="w-2.5 h-2.5 rounded-full shrink-0"></span>
+                <span class="text-sm text-zinc-300">Anti-Piracy Filter</span>
+                <span class="text-xs text-zinc-500"
+                      x-text="security.antipiracy_enabled ? 'Enabled' : 'Disabled'"></span>
+            </div>
+            <!-- NIST NSRL -->
+            <div class="flex items-center gap-3">
+                <span :class="security.nsrl_enabled ? 'bg-brand-500' : 'bg-red-500'"
+                      class="w-2.5 h-2.5 rounded-full shrink-0"></span>
+                <span class="text-sm text-zinc-300">NIST NSRL Hash Check</span>
+                <span class="text-xs text-zinc-500"
+                      x-text="security.nsrl_enabled ? 'Enabled' : 'Disabled'"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audit Log -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h3 class="text-sm font-semibold text-zinc-300 mb-4 uppercase tracking-wide">Audit Log</h3>
+        <div class="flex items-center gap-6">
+            <div class="text-center">
+                <div class="text-2xl font-mono text-zinc-100" x-text="auditLogCount ?? '--'"></div>
+                <div class="text-xs text-zinc-500 mt-1">Total Records</div>
+            </div>
+            <div class="text-center">
+                <div class="text-sm font-mono text-zinc-400" x-text="auditRetentionDays ? auditRetentionDays + ' days' : '--'"></div>
+                <div class="text-xs text-zinc-500 mt-1">Retention</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Release Stats -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h3 class="text-sm font-semibold text-zinc-300 mb-4 uppercase tracking-wide">Release Statistics</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div class="text-center">
+                <div class="text-2xl font-mono text-zinc-100" x-text="stats.total ?? '--'"></div>
+                <div class="text-xs text-zinc-500 mt-1">Total Releases</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-mono text-green-400" x-text="stats.safe ?? '--'"></div>
+                <div class="text-xs text-zinc-500 mt-1">Safe</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-mono text-amber-400" x-text="stats.flagged ?? '--'"></div>
+                <div class="text-xs text-zinc-500 mt-1">Flagged</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-mono text-brand-400" x-text="stats.downloaded ?? '--'"></div>
+                <div class="text-xs text-zinc-500 mt-1">Downloaded</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function systemHealthPage() {
+    return {
+        dbOk: false,
+        dbChecked: false,
+        dbError: '',
+        tasks: { scheduler: false, retention: false, hash_recheck: false },
+        indexers: [],
+        adapters: [],
+        stats: {},
+        downloadClient: { configured: false, reachable: null, queue_depth: null, url: '', type: 'sabnzbd', version: null },
+        auditLogCount: null,
+        auditRetentionDays: null,
+        security: {},
+        async fetchAll() {
+            await Promise.all([
+                this.checkDb(),
+                this.fetchHealth(),
+                this.fetchIndexers(),
+                this.fetchStats(),
+            ]);
+        },
+        async checkDb() {
+            try {
+                const r = await fetch('/ready');
+                const data = await r.json();
+                this.dbOk = data.status === 'ok';
+                this.dbError = data.errors ? data.errors.join(', ') : '';
+            } catch (e) {
+                this.dbOk = false;
+                this.dbError = String(e);
+            }
+            this.dbChecked = true;
+        },
+        async fetchHealth() {
+            try {
+                const r = await fetch('/api/v1/settings/system-health');
+                if (r.ok) {
+                    const data = await r.json();
+                    this.tasks = data.tasks || {};
+                    this.adapters = data.adapters || [];
+                    this.downloadClient = data.download_client || { configured: false };
+                    this.auditLogCount = data.audit_log_count ?? null;
+                    this.auditRetentionDays = data.audit_retention_days ?? null;
+                    this.security = data.security || {};
+                }
+            } catch (e) { /* ignore */ }
+        },
+        async fetchIndexers() {
+            try {
+                const r = await fetch('/api/v1/indexers/');
+                if (r.ok) {
+                    this.indexers = await r.json();
+                }
+            } catch (e) { /* ignore */ }
+        },
+        async fetchStats() {
+            try {
+                const r = await fetch('/api/v1/releases/stats');
+                if (r.ok) {
+                    this.stats = await r.json();
+                }
+            } catch (e) { /* ignore */ }
+        },
+        init() {
+            this.fetchAll();
+        }
+    };
+}
+</script>
+{% endblock %}

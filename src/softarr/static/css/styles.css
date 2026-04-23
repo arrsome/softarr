@@ -1,0 +1,189 @@
+/* Softarr - Custom styles */
+
+body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* HTMX loading indicator */
+.htmx-indicator {
+    display: none;
+}
+.htmx-request .htmx-indicator {
+    display: block;
+}
+.htmx-request.htmx-indicator {
+    display: block;
+}
+
+/* Smooth transitions for HTMX swaps */
+.htmx-swapping {
+    opacity: 0;
+    transition: opacity 100ms ease-out;
+}
+.htmx-settling {
+    opacity: 1;
+    transition: opacity 200ms ease-in;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #444;
+}
+
+/* Table row hover */
+tbody tr {
+    transition: background-color 150ms ease;
+}
+
+/* ARR-stack active nav link -- left blue border indicator */
+nav a.arr-active {
+    border-left-color: #1e90ff !important;
+    background: #252525;
+    color: #fff !important;
+}
+
+nav a.arr-nav-link:hover:not(.arr-active) {
+    background: #222;
+    color: #e5e5e5;
+}
+
+/* Compact table density matching ARR stack */
+table tbody tr td {
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
+    font-size: 0.8125rem;
+}
+
+/* Subtle alternating rows */
+table tbody tr:nth-child(even) {
+    background: rgba(255,255,255,0.02);
+}
+
+/* Input focus glow */
+input:focus, select:focus, textarea:focus {
+    box-shadow: 0 0 0 1px rgba(30,144,255,0.3);
+}
+
+/* =============================================================
+   ACC-05: Visible focus outlines (WCAG 2.2 AA -- 2.4.11)
+   Never hidden. All focusable elements get a clear indicator.
+   ============================================================= */
+:focus-visible {
+    outline: 2px solid #1e90ff;
+    outline-offset: 2px;
+}
+
+/* Buttons and links that already have a visible active state
+   still need the outline for keyboard-only users. */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid #1e90ff;
+    outline-offset: 2px;
+}
+
+/* ACC-04: Skip to content link -- visible only on keyboard focus */
+.skip-link {
+    position: absolute;
+    top: -100%;
+    left: 0.5rem;
+    z-index: 9999;
+    padding: 0.5rem 1rem;
+    background: #1e90ff;
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 0 0 4px 4px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.skip-link:focus {
+    top: 0;
+}
+
+/* Screen-reader only utility -- visually hidden but announced */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* ACC-08: aria-live regions for dynamic updates */
+[aria-live] {
+    /* No visual change -- ensures region is not suppressed by display:none */
+}
+
+/* ACC-09: Table header cells -- visually distinct */
+table thead th {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+
+/* =============================================================
+   Tooltip system (tooltips.js)
+   ============================================================= */
+.arr-tooltip {
+    position: absolute;
+    z-index: 9000;
+    max-width: 260px;
+    padding: 0.45rem 0.65rem;
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: #c8c8c8;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 120ms ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+.arr-tooltip.arr-tooltip--visible {
+    opacity: 1;
+}
+.arr-tooltip .arr-tooltip-title {
+    display: block;
+    color: #e5e5e5;
+    font-weight: 600;
+    margin-bottom: 0.2rem;
+}
+
+/* =============================================================
+   Mobile swipe gesture styles (staging queue)
+   ============================================================= */
+.swipe-card {
+    transition: transform 200ms ease, opacity 200ms ease;
+    touch-action: pan-y;
+}
+.swipe-card.swipe-right {
+    transform: translateX(60px);
+    opacity: 0.6;
+}
+.swipe-card.swipe-left {
+    transform: translateX(-60px);
+    opacity: 0.6;
+}

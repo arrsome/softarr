@@ -1,0 +1,1614 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+    <p class="text-sm text-zinc-400">Application configuration, source adapters, and download client settings.</p>
+
+    <!-- Quick Security Settings Presets -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800"
+         x-data="{
+             applying: false,
+             result: '',
+             resultOk: true,
+             async applyPreset(preset) {
+                 this.applying = true;
+                 this.result = '';
+                 try {
+                     const csrf = document.querySelector('meta[name=\'csrf-token\']').content;
+                     const resp = await fetch('/api/v1/settings/security-preset', {
+                         method: 'POST',
+                         headers: {
+                             'Content-Type': 'application/json',
+                             'X-CSRF-Token': csrf,
+                         },
+                         body: JSON.stringify({ preset }),
+                     });
+                     if (resp.ok) {
+                         const data = await resp.json();
+                         this.resultOk = true;
+                         if (data.applied.length > 0) {
+                             this.result = 'Preset \'' + data.preset + '\' applied (' + data.applied.length + ' settings updated).';
+                         } else {
+                             this.result = 'Custom mode -- no changes applied.';
+                         }
+                     } else {
+                         this.resultOk = false;
+                         const text = await resp.text();
+                         this.result = 'Error: ' + text;
+                     }
+                 } catch (e) {
+                     this.resultOk = false;
+                     this.result = 'Error: ' + String(e);
+                 } finally {
+                     this.applying = false;
+                 }
+             }
+         }">
+        <h4 class="text-sm font-medium text-zinc-300 mb-1">Quick Security Settings</h4>
+        <p class="text-xs text-zinc-500 mb-4">
+            Apply a preset bundle of security settings. Changes take effect immediately and can be
+            customised individually below.
+        </p>
+        <div class="flex flex-wrap gap-3">
+            <button @click="applyPreset('nanny')"
+                    :disabled="applying"
+                    class="bg-brand-700 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colours disabled:opacity-50"
+                    aria-label="Apply Nanny Mode -- enable all security controls">
+                Nanny Mode
+            </button>
+            <button @click="applyPreset('adult')"
+                    :disabled="applying"
+                    class="bg-zinc-700 hover:bg-zinc-600 text-zinc-200 px-4 py-2 rounded-lg text-sm font-medium transition-colours disabled:opacity-50"
+                    aria-label="Apply I'm an Adult mode -- disable hash verification and anti-piracy">
+                I'm an Adult
+            </button>
+            <button @click="applyPreset('custom')"
+                    :disabled="applying"
+                    class="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 px-4 py-2 rounded-lg text-sm font-medium transition-colours disabled:opacity-50"
+                    aria-label="Custom -- no changes applied, manage settings individually">
+                Custom
+            </button>
+        </div>
+        <div x-show="result"
+             x-transition
+             class="mt-3 text-xs"
+             :class="resultOk ? 'text-brand-400' : 'text-red-400'"
+             x-text="result"
+             aria-live="polite"></div>
+    </div>
+
+    <!-- SABnzbd Integration -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800" x-data="{ testing: false, testResult: '' }">
+        <h4 class="text-sm font-medium text-zinc-300 mb-4">SABnzbd Integration</h4>
+        <p class="text-xs text-zinc-500 mb-4">Configure SABnzbd to queue downloads for approved releases. All fields are persisted to softarr.ini.</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">SABnzbd URL</label>
+                <input type="text" id="sab-url" placeholder="http://localhost:8080"
+                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">API Key</label>
+                <input type="password" id="sab-api-key" placeholder="Enter SABnzbd API key"
+                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Category</label>
+                <input type="text" id="sab-category" value="software"
+                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+            </div>
+            <div class="flex items-end gap-3">
+                <button onclick="saveSabnzbdConfig()"
+                        class="bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    Save
+                </button>
+                <button @click="testing = true; testResult = ''; testSabnzbd().then(r => { testResult = r; testing = false; })"
+                        :disabled="testing"
+                        class="bg-zinc-700 hover:bg-zinc-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                    <span x-show="!testing">Test Connection</span>
+                    <span x-show="testing">Testing...</span>
+                </button>
+            </div>
+        </div>
+        <div x-show="testResult" x-transition class="text-xs mt-2 p-2 rounded-lg"
+             :class="testResult.includes('ok') ? 'bg-brand-900/30 text-brand-300' : 'bg-red-900/30 text-red-300'"
+             x-text="testResult"></div>
+    </div>
+
+    <!-- Active Download Client -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800" x-data="{ client: '{{ app_settings.active_download_client }}' }">
+        <h4 class="text-sm font-medium text-zinc-300 mb-2">Active Download Client</h4>
+        <p class="text-xs text-zinc-500 mb-4">Select which download client Softarr sends approved releases to. SABnzbd uses NZB files via Usenet; qBittorrent uses magnet links or .torrent URLs.</p>
+        <div class="flex gap-3">
+            <button @click="client = 'sabnzbd'; setActiveClient('sabnzbd')"
+                    :class="client === 'sabnzbd' ? 'bg-brand-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'"
+                    class="px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                SABnzbd
+            </button>
+            <button @click="client = 'qbittorrent'; setActiveClient('qbittorrent')"
+                    :class="client === 'qbittorrent' ? 'bg-brand-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'"
+                    class="px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                qBittorrent
+            </button>
+        </div>
+    </div>
+
+    <!-- Source Adapters -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h4 class="text-sm font-medium text-zinc-300 mb-4">Source Adapters</h4>
+        <div class="space-y-3">
+            <div class="bg-zinc-800/50 rounded-lg p-4" x-data="{ expanded: false }">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3 cursor-pointer select-none" @click="expanded = !expanded">
+                        <svg :class="expanded ? 'rotate-90' : ''" class="w-3.5 h-3.5 text-zinc-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        <div>
+                            <p class="text-sm font-medium">Usenet / NZB</p>
+                            <p class="text-xs text-zinc-500 mt-0.5">Search Newznab-compatible indexers for software releases.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[10px] text-zinc-500">{{ usenet_indexers | length }} indexer{{ 's' if usenet_indexers | length != 1 else '' }}</span>
+                        <button onclick="toggleUsenet(this)"
+                                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors {{ 'bg-brand-600' if usenet_enabled else 'bg-zinc-700' }}"
+                                data-enabled="{{ 'true' if usenet_enabled else 'false' }}"
+                                title="{{ 'Enabled' if usenet_enabled else 'Disabled' }}">
+                            <span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform {{ 'translate-x-4' if usenet_enabled else 'translate-x-1' }}"></span>
+                        </button>
+                    </div>
+                </div>
+                <div x-show="expanded" x-transition x-cloak class="mt-4 border-t border-zinc-700 pt-4">
+                    <div id="indexer-list" class="space-y-2 mb-4">
+                        {% for idx in usenet_indexers %}
+                        <div class="flex items-center justify-between bg-zinc-900/50 rounded-lg px-3 py-2 text-xs" data-indexer-name="{{ idx.name }}">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <span class="w-1.5 h-1.5 rounded-full {{ 'bg-brand-500' if idx.enabled else 'bg-zinc-600' }} shrink-0"></span>
+                                <span class="font-medium text-zinc-200 truncate">{{ idx.name }}</span>
+                                <span class="text-zinc-500 truncate hidden sm:inline">{{ idx.url }}</span>
+                                <span class="text-zinc-600 font-mono">{{ idx.api_key }}</span>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0 ml-2">
+                                <span class="text-zinc-600">P{{ idx.priority }}</span>
+                                <button onclick="editIndexer('{{ idx.name }}')" class="text-zinc-500 hover:text-zinc-300 transition-colors" title="Edit">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                </button>
+                                <button onclick="deleteIndexer('{{ idx.name }}')" class="text-zinc-500 hover:text-red-400 transition-colors" title="Delete">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% if not usenet_indexers %}
+                        <p class="text-xs text-zinc-500" id="no-indexers-msg">No indexers configured. Add one below.</p>
+                        {% endif %}
+                    </div>
+
+                    <!-- Add / Edit Indexer Form -->
+                    <div class="bg-zinc-900/50 rounded-lg p-3 border border-zinc-700/50">
+                        <p class="text-xs font-medium text-zinc-400 mb-3" id="indexer-form-title">Add Indexer</p>
+                        <input type="hidden" id="indexer-edit-name" value="">
+
+                        <!-- Quick setup: predefined indexer templates -->
+                        <div class="mb-3 flex items-center gap-2">
+                            <label class="text-[10px] text-zinc-500 shrink-0">Quick setup:</label>
+                            <select id="indexer-preset" onchange="applyIndexerPreset()"
+                                    class="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                                <option value="">Select predefined indexer...</option>
+                                <option value="drunkenslug|https://drunkenslug.com|4000,4010,4020,4030,4040,4050,4060,4070">DrunkenSlug</option>
+                                <option value="nzbsu|https://api.nzb.su|4000,4010,4020,4030,4040,4050,4060,4070">NZB.su</option>
+                                <option value="dognzb|https://api.dognzb.cr|4000,4010,4020,4030,4040,4050,4060,4070">DogNZB</option>
+                                <option value="nzbcat|https://www.nzb.cat|4000,4010,4020,4030,4040,4050,4060,4070">NZBCat</option>
+                                <option value="nzbfinder|https://www.nzbfinder.ws|4000,4010,4020,4030,4040,4050,4060,4070">NZBFinder</option>
+                                <option value="nzbgeek|https://api.nzbgeek.info|4000,4010,4020,4030,4040,4050,4060,4070">NZBGeek</option>
+                                <option value="nzbplanet|https://www.nzbplanet.net/api|4000,4010,4020,4030,4040,4050,4060,4070">NZBPlanet</option>
+                                <option value="simplynzbs|https://www.simplynzbs.com|4000,4010,4020,4030,4040,4050,4060,4070">SimplyNZBs</option>
+                                <option value="tabularasa|https://www.tabularasa.pw|4000,4010,4020,4030,4040,4050,4060,4070">Tabula Rasa</option>
+                                <option value="newznab|https://|4000,4010,4020,4030,4040,4050,4060,4070">Newznab (generic)</option>
+                            </select>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                            <div>
+                                <label class="block text-[10px] text-zinc-500 mb-1">Name</label>
+                                <input type="text" id="indexer-name" placeholder="NZB.su"
+                                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-zinc-500 mb-1">URL</label>
+                                <input type="text" id="indexer-url" placeholder="https://api.nzb.su"
+                                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-zinc-500 mb-1">API Key</label>
+                                <input type="password" id="indexer-api-key" placeholder="Enter API key"
+                                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-zinc-500 mb-1">Categories (Newznab IDs)</label>
+                                <input type="text" id="indexer-categories" value="4000,4010,4020,4030,4040,4050,4060,4070"
+                                       placeholder="4000,4010,4020,4030,4040,4050,4060,4070"
+                                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-[10px] text-zinc-500 mb-1">Priority</label>
+                                    <input type="number" id="indexer-priority" value="0" min="0"
+                                           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                                </div>
+                                <div class="flex items-end">
+                                    <label class="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer pb-1.5">
+                                        <input type="checkbox" id="indexer-enabled" checked
+                                               class="rounded border-zinc-600 bg-zinc-800 text-brand-600 focus:ring-brand-500 focus:ring-offset-0">
+                                        Enabled
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="saveIndexer()"
+                                    class="bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                                Save Indexer
+                            </button>
+                            <button @click="expanded = false; resetIndexerForm()" class="bg-zinc-700 hover:bg-zinc-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- qBittorrent Integration -->
+            <div class="bg-zinc-800/50 rounded-lg p-4" x-data="{ expanded: false, testing: false, testResult: '' }">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3 cursor-pointer select-none" @click="expanded = !expanded">
+                        <svg :class="expanded ? 'rotate-90' : ''" class="w-3.5 h-3.5 text-zinc-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        <div>
+                            <p class="text-sm font-medium">qBittorrent</p>
+                            <p class="text-xs text-zinc-500 mt-0.5">Torrent downloads via the qBittorrent Web UI. Enables the "Torrent" source option on the Release Search page when configured.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        {% if app_settings.qbittorrent_configured %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-brand-900/50 text-brand-300">Configured</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-zinc-700/80 text-zinc-400">Not configured</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div x-show="expanded" x-transition x-cloak class="mt-4 border-t border-zinc-700 pt-4 space-y-4">
+                    <p class="text-xs text-zinc-500">Softarr polls qBittorrent every 60 seconds for completion status -- no post-processing script required. Optionally, configure qBittorrent's "Run Program on Torrent Completion" to call the Softarr webhook for instant notification.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] text-zinc-500 mb-1">qBittorrent URL</label>
+                            <input type="text" id="qbt-url" value="{{ app_settings.qbittorrent_url }}" placeholder="http://localhost:8080"
+                                   class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-zinc-500 mb-1">Username</label>
+                            <input type="text" id="qbt-username" value="{{ app_settings.qbittorrent_username }}" placeholder="admin"
+                                   class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-zinc-500 mb-1">Password</label>
+                            <input type="password" id="qbt-password" placeholder="Leave blank to keep current"
+                                   class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-zinc-500 mb-1">Category</label>
+                            <input type="text" id="qbt-category" value="{{ app_settings.qbittorrent_category }}"
+                                   class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                        </div>
+                        <div class="flex items-end gap-3 md:col-span-2">
+                            <button onclick="saveQbtConfig()"
+                                    class="bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                                Save
+                            </button>
+                            <button @click="testing = true; testResult = ''; testQbt().then(r => { testResult = r; testing = false; })"
+                                    :disabled="testing"
+                                    class="bg-zinc-700 hover:bg-zinc-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50">
+                                <span x-show="!testing">Test Connection</span>
+                                <span x-show="testing">Testing...</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div x-show="testResult" x-transition class="text-xs p-2 rounded-lg"
+                         :class="testResult.startsWith('ok') ? 'bg-brand-900/30 text-brand-300' : 'bg-red-900/30 text-red-300'"
+                         x-text="testResult"></div>
+                    <div class="border-t border-zinc-700 pt-3">
+                        <p class="text-[10px] text-zinc-600 font-mono leading-relaxed">
+                            Optional webhook (qBittorrent Options &rarr; Downloads &rarr; Run Program):<br>
+                            curl -s -X POST http://softarr:8000/api/v1/hooks/qbittorrent -H "Content-Type: application/json" -d '{"hash": "%I", "name": "%N", "status": "completed"}'
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hash Verification -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h4 class="text-sm font-medium text-zinc-300 mb-1">Hash Verification</h4>
+        <p class="text-xs text-zinc-500 mb-4">Enable optional external hash databases to improve trust ratings. Each lookup is best-effort -- failures do not block analysis.</p>
+        <div class="space-y-4">
+            <!-- VirusTotal -->
+            <div class="bg-zinc-800/50 rounded-lg p-4 space-y-3" x-data="{ testing: false, testResult: '', testOk: false }">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium">VirusTotal</p>
+                        <p class="text-xs text-zinc-500 mt-0.5">Checks SHA-256 hashes against 70+ antivirus engines. Flags releases as BLOCKED if any engine detects malware.</p>
+                    </div>
+                    <button onclick="toggleHashSource('virustotal_enabled', this)"
+                            class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors {{ 'bg-brand-600' if app_settings.virustotal_enabled else 'bg-zinc-700' }}"
+                            data-enabled="{{ 'true' if app_settings.virustotal_enabled else 'false' }}"
+                            title="{{ 'Enabled' if app_settings.virustotal_enabled else 'Disabled' }}">
+                        <span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform {{ 'translate-x-4' if app_settings.virustotal_enabled else 'translate-x-1' }}"></span>
+                    </button>
+                </div>
+                <div>
+                    <label class="block text-[10px] text-zinc-500 mb-1">API Key</label>
+                    <div class="flex gap-2">
+                        <input type="password" id="vt-api-key" placeholder="VirusTotal API key"
+                               class="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                        <button onclick="saveHashSourceKey('virustotal_api_key', 'vt-api-key')"
+                                class="bg-zinc-700 hover:bg-zinc-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                            Save Key
+                        </button>
+                        <button @click="testing = true; testResult = ''; testVirusTotalKey().then(r => { testResult = r.msg; testOk = r.ok; testing = false; })"
+                                :disabled="testing"
+                                class="bg-zinc-700 hover:bg-zinc-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50">
+                            <span x-show="!testing">Test Key</span>
+                            <span x-show="testing">Testing...</span>
+                        </button>
+                    </div>
+                    <div x-show="testResult" x-transition class="mt-2 text-xs p-2 rounded-lg"
+                         :class="testOk ? 'bg-brand-900/30 text-brand-300' : 'bg-red-900/30 text-red-300'"
+                         x-text="testResult"></div>
+                </div>
+            </div>
+
+            <!-- NSRL -->
+            <div class="flex items-center justify-between bg-zinc-800/50 rounded-lg p-4">
+                <div>
+                    <p class="text-sm font-medium">NIST NSRL</p>
+                    <p class="text-xs text-zinc-500 mt-0.5">Checks hashes against the NIST National Software Reference Library. Boosts trust for known-good software. No API key required.</p>
+                </div>
+                <button onclick="toggleHashSource('nsrl_enabled', this)"
+                        class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors {{ 'bg-brand-600' if app_settings.nsrl_enabled else 'bg-zinc-700' }}"
+                        data-enabled="{{ 'true' if app_settings.nsrl_enabled else 'false' }}"
+                        title="{{ 'Enabled' if app_settings.nsrl_enabled else 'Disabled' }}">
+                    <span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform {{ 'translate-x-4' if app_settings.nsrl_enabled else 'translate-x-1' }}"></span>
+                </button>
+            </div>
+
+            <!-- CIRCL hashlookup -->
+            <div class="flex items-center justify-between bg-zinc-800/50 rounded-lg p-4">
+                <div>
+                    <p class="text-sm font-medium">CIRCL hashlookup</p>
+                    <p class="text-xs text-zinc-500 mt-0.5">Checks SHA-256 hashes against the CIRCL national hashlookup service. Boosts trust for known-good software. No API key required.</p>
+                </div>
+                <button onclick="toggleHashSource('circl_hashlookup_enabled', this)"
+                        class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors {{ 'bg-brand-600' if app_settings.circl_hashlookup_enabled else 'bg-zinc-700' }}"
+                        data-enabled="{{ 'true' if app_settings.circl_hashlookup_enabled else 'false' }}"
+                        title="{{ 'Enabled' if app_settings.circl_hashlookup_enabled else 'Disabled' }}">
+                    <span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform {{ 'translate-x-4' if app_settings.circl_hashlookup_enabled else 'translate-x-1' }}"></span>
+                </button>
+            </div>
+
+            <!-- MalwareBazaar -->
+            <div class="flex items-center justify-between bg-zinc-800/50 rounded-lg p-4">
+                <div>
+                    <p class="text-sm font-medium">MalwareBazaar</p>
+                    <p class="text-xs text-zinc-500 mt-0.5">Checks SHA-256 hashes against abuse.ch MalwareBazaar. Flags releases found in the malware database. No API key required.</p>
+                </div>
+                <button onclick="toggleHashSource('malwarebazaar_enabled', this)"
+                        class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors {{ 'bg-brand-600' if app_settings.malwarebazaar_enabled else 'bg-zinc-700' }}"
+                        data-enabled="{{ 'true' if app_settings.malwarebazaar_enabled else 'false' }}"
+                        title="{{ 'Enabled' if app_settings.malwarebazaar_enabled else 'Disabled' }}">
+                    <span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform {{ 'translate-x-4' if app_settings.malwarebazaar_enabled else 'translate-x-1' }}"></span>
+                </button>
+            </div>
+
+            <!-- MISP warninglists -->
+            <div class="flex items-center justify-between bg-zinc-800/50 rounded-lg p-4">
+                <div>
+                    <p class="text-sm font-medium">MISP Warninglists</p>
+                    <p class="text-xs text-zinc-500 mt-0.5">Checks hashes against MISP community warninglists of known-bad indicators. Flags suspicious releases. No API key required.</p>
+                </div>
+                <button onclick="toggleHashSource('misp_warninglists_enabled', this)"
+                        class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors {{ 'bg-brand-600' if app_settings.misp_warninglists_enabled else 'bg-zinc-700' }}"
+                        data-enabled="{{ 'true' if app_settings.misp_warninglists_enabled else 'false' }}"
+                        title="{{ 'Enabled' if app_settings.misp_warninglists_enabled else 'Disabled' }}">
+                    <span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform {{ 'translate-x-4' if app_settings.misp_warninglists_enabled else 'translate-x-1' }}"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Info -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h4 class="text-sm font-medium text-zinc-300 mb-4">Application</h4>
+        <div class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+                <span class="text-zinc-500 text-xs">Database</span>
+                <p class="text-zinc-200">{{ app_settings.database_type | title }}</p>
+            </div>
+            <div>
+                <span class="text-zinc-500 text-xs">Debug Mode</span>
+                <p class="text-zinc-200">{{ 'On' if app_settings.debug else 'Off' }}</p>
+            </div>
+            <div>
+                <span class="text-zinc-500 text-xs">Version</span>
+                <p class="text-zinc-200">{{ app_version }}</p>
+            </div>
+            <div>
+                <span class="text-zinc-500 text-xs">API Docs</span>
+                <p><a href="/docs" target="_blank" class="text-brand-400 hover:text-brand-300 text-xs">OpenAPI / Swagger</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Open-Source Catalogue -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h4 class="text-sm font-medium text-zinc-300 mb-1">Open-Source Catalogue</h4>
+        <p class="text-xs text-zinc-500 mb-4">Show the built-in open-source software catalogue on the Software Library page. Disable this if you prefer not to see pre-defined entries.</p>
+        <div class="flex items-center justify-between bg-zinc-800/50 rounded-lg p-4">
+            <div>
+                <p class="text-sm font-medium">Show Catalogue Section</p>
+                <p class="text-xs text-zinc-500 mt-0.5">When enabled, a browsable catalogue of 20 popular open-source apps is shown on the Software Library page.</p>
+            </div>
+            <button onclick="toggleHashSource('show_opensource_catalogue', this)"
+                    class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors {{ 'bg-brand-600' if app_settings.show_opensource_catalogue else 'bg-zinc-700' }}"
+                    data-enabled="{{ 'true' if app_settings.show_opensource_catalogue else 'false' }}"
+                    title="{{ 'Enabled' if app_settings.show_opensource_catalogue else 'Disabled' }}">
+                <span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform {{ 'translate-x-4' if app_settings.show_opensource_catalogue else 'translate-x-1' }}"></span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Security Policy -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800" x-data="{ expanded: false }">
+        <button @click="expanded = !expanded" class="w-full flex items-center justify-between text-left">
+            <h4 class="text-sm font-medium text-zinc-300">Password Policy</h4>
+            <svg class="w-4 h-4 text-zinc-500 transition-transform" :class="{ 'rotate-180': expanded }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="expanded" x-transition class="mt-4 space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs text-zinc-500 mb-1">Minimum length</label>
+                    <input type="number" min="6" max="128" id="pwd_min_length"
+                           class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 w-full focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('password_min_length', this.value)">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-500 mb-1">Remember last N passwords</label>
+                    <input type="number" min="0" max="24" id="pwd_history_count"
+                           class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 w-full focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('password_history_count', this.value)">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-500 mb-1">Max age (days, 0 = disabled)</label>
+                    <input type="number" min="0" max="365" id="pwd_max_age"
+                           class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 w-full focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('password_max_age_days', this.value)">
+                </div>
+            </div>
+            <div class="space-y-2">
+                <label class="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <input type="checkbox" id="pwd_uppercase" class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                           onchange="saveSetting('password_require_uppercase', this.checked ? 'true' : 'false')">
+                    Require uppercase letter
+                </label>
+                <label class="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <input type="checkbox" id="pwd_numbers" class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                           onchange="saveSetting('password_require_numbers', this.checked ? 'true' : 'false')">
+                    Require number
+                </label>
+                <label class="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <input type="checkbox" id="pwd_special" class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                           onchange="saveSetting('password_require_special', this.checked ? 'true' : 'false')">
+                    Require special character
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Two-Factor Authentication -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <div class="flex items-center justify-between mb-3">
+            <h4 class="text-sm font-medium text-zinc-300">Two-Factor Authentication (2FA)</h4>
+            {% if current_user and current_user.totp_enabled %}
+            <span class="text-xs bg-brand-700 text-brand-200 px-2 py-0.5 rounded-full font-medium">Enabled</span>
+            {% else %}
+            <span class="text-xs bg-zinc-700 text-zinc-400 px-2 py-0.5 rounded-full">Disabled</span>
+            {% endif %}
+        </div>
+        <p class="text-xs text-zinc-500 mb-4">
+            Protect your account with a time-based one-time password (TOTP) from an authenticator app.
+            This applies to your current admin account only.
+        </p>
+        <div class="flex items-center gap-3">
+            <a href="/auth/2fa/setup"
+               class="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 font-medium py-1.5 px-4 rounded-lg text-sm transition-colours">
+                {% if current_user and current_user.totp_enabled %}Manage 2FA{% else %}Set up 2FA{% endif %}
+            </a>
+            {% if current_user and current_user.totp_enabled %}
+            <form action="/auth/2fa/disable" method="POST" class="inline">
+                <button type="submit"
+                        onclick="return confirm('Disable two-factor authentication?')"
+                        class="bg-red-800 hover:bg-red-700 text-red-100 font-medium py-1.5 px-4 rounded-lg text-sm transition-colours">
+                    Disable 2FA
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        <div class="mt-3 pt-3 border-t border-zinc-800">
+            <label class="block text-xs text-zinc-500 mb-1">TOTP Issuer Name</label>
+            <input type="text" id="totp_issuer" placeholder="Softarr"
+                   class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 w-48 focus:outline-none focus:border-brand-500"
+                   onblur="saveSetting('totp_issuer', this.value)">
+            <p class="text-xs text-zinc-600 mt-1">Shown in the authenticator app label. Default: Softarr.</p>
+        </div>
+    </div>
+
+    <!-- Analysis & Heuristic Settings -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800" x-data="{ expanded: false }">
+        <button @click="expanded = !expanded" class="w-full flex items-center justify-between text-left">
+            <h4 class="text-sm font-medium text-zinc-300">Analysis & Heuristics</h4>
+            <svg class="w-4 h-4 text-zinc-500 transition-transform" :class="{ 'rotate-180': expanded }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="expanded" x-transition class="mt-4 space-y-4">
+            <div>
+                <label class="block text-xs text-zinc-500 mb-2">Heuristic Sensitivity</label>
+                <div class="flex gap-2">
+                    <button onclick="setSensitivity('low')" id="sens-low"
+                            class="sensitivity-btn flex-1 py-1.5 rounded-lg text-sm border border-zinc-700 text-zinc-400 hover:bg-zinc-800 transition-colours">
+                        Low
+                    </button>
+                    <button onclick="setSensitivity('medium')" id="sens-medium"
+                            class="sensitivity-btn flex-1 py-1.5 rounded-lg text-sm border border-zinc-700 text-zinc-400 hover:bg-zinc-800 transition-colours">
+                        Medium
+                    </button>
+                    <button onclick="setSensitivity('high')" id="sens-high"
+                            class="sensitivity-btn flex-1 py-1.5 rounded-lg text-sm border border-zinc-700 text-zinc-400 hover:bg-zinc-800 transition-colours">
+                        High
+                    </button>
+                </div>
+                <div class="grid grid-cols-3 gap-2 mt-1 text-xs text-zinc-600 text-center">
+                    <span>3+ flags to restrict</span>
+                    <span>2+ flags to restrict</span>
+                    <span>1 flag to restrict</span>
+                </div>
+                <p class="text-xs text-zinc-500 mt-2">
+                    Controls how aggressively releases are flagged. Hash mismatches and invalid signatures
+                    always result in BLOCKED regardless of this setting.
+                </p>
+            </div>
+            <div>
+                <label class="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <input type="checkbox" id="antipiracy_enabled"
+                           class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                           onchange="saveSetting('antipiracy_enabled', this.checked ? 'true' : 'false')">
+                    Enable anti-piracy content filter
+                </label>
+                <p class="text-xs text-zinc-500 mt-1 ml-6">
+                    Flags releases with names containing piracy-related keywords (cracked, keygen, warez, etc.).
+                    Recommended for all deployments.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Retention Policy -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800" x-data="{ expanded: false }">
+        <button @click="expanded = !expanded" class="w-full flex items-center justify-between text-left">
+            <h4 class="text-sm font-medium text-zinc-300">Retention Policy</h4>
+            <svg class="w-4 h-4 text-zinc-500 transition-transform" :class="{ 'rotate-180': expanded }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="expanded" x-transition class="mt-4 space-y-3">
+            <p class="text-xs text-zinc-500">Automatically delete DISCOVERED releases older than a set number of days to prevent accumulation.</p>
+            <div class="flex items-center gap-4">
+                <label class="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <input type="checkbox"
+                           id="retention_enabled_toggle"
+                           class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                           onchange="saveSetting('retention_enabled', this.checked ? 'true' : 'false')">
+                    Enable auto-cleanup
+                </label>
+            </div>
+            <div class="flex items-center gap-3">
+                <label class="text-xs text-zinc-500 w-48">Delete DISCOVERED older than</label>
+                <input type="number" min="1" max="365" id="retention_days_input"
+                       class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 w-24 focus:outline-none focus:border-brand-500"
+                       onblur="saveSetting('retention_discovered_days', this.value)">
+                <span class="text-xs text-zinc-500">days</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scheduler -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800" x-data="{ expanded: false }">
+        <button @click="expanded = !expanded" class="w-full flex items-center justify-between text-left">
+            <h4 class="text-sm font-medium text-zinc-300">Release Scheduler</h4>
+            <svg class="w-4 h-4 text-zinc-500 transition-transform" :class="{ 'rotate-180': expanded }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="expanded" x-transition class="mt-4 space-y-3">
+            <p class="text-xs text-zinc-500">Automatically search for new releases on a schedule. Requires restart to take effect when enabling.</p>
+            <div class="flex items-center gap-4">
+                <label class="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <input type="checkbox"
+                           id="scheduler_enabled_toggle"
+                           class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                           onchange="saveSetting('scheduler_enabled', this.checked ? 'true' : 'false')">
+                    Enable scheduled release checking
+                </label>
+            </div>
+            <div class="flex items-center gap-3">
+                <label class="text-xs text-zinc-500 w-48">Check interval</label>
+                <input type="number" min="5" max="1440" id="scheduler_interval_input"
+                       class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 w-24 focus:outline-none focus:border-brand-500"
+                       onblur="saveSetting('scheduler_interval_minutes', this.value)">
+                <span class="text-xs text-zinc-500">minutes</span>
+            </div>
+            <div class="pt-2">
+                <button onclick="triggerScheduler()" id="scheduler-run-btn"
+                        class="bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    Run Now
+                </button>
+                <span id="scheduler-run-status" class="ml-3 text-xs text-zinc-400"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Assistant -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800" x-data="{ expanded: false }">
+        <button @click="expanded = !expanded" class="w-full flex items-center justify-between text-left">
+            <h4 class="text-sm font-medium text-zinc-300">AI Assistant</h4>
+            <svg class="w-4 h-4 text-zinc-500 transition-transform" :class="{ 'rotate-180': expanded }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="expanded" x-transition class="mt-4 space-y-4">
+            <p class="text-xs text-zinc-500">Optional AI assistant for software discovery, risk explanation, and version comparison. Scoped responses only -- AI cannot approve or modify releases.</p>
+            <div class="flex items-center gap-4">
+                <label class="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <input type="checkbox" id="ai_enabled_toggle"
+                           class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                           onchange="saveSetting('ai_enabled', this.checked ? 'true' : 'false')">
+                    Enable AI assistant
+                </label>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs text-zinc-500 mb-1">Provider</label>
+                    <input type="text" id="ai_provider_input" placeholder="openai"
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('ai_provider', this.value)">
+                    <p class="text-[10px] text-zinc-600 mt-1">e.g. openai, azure, ollama</p>
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-500 mb-1">Model</label>
+                    <input type="text" id="ai_model_input" placeholder="gpt-4o-mini"
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('ai_model', this.value)">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-500 mb-1">API Base URL</label>
+                    <input type="url" id="ai_base_url_input" placeholder="https://api.openai.com/v1"
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('ai_base_url', this.value)">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-500 mb-1">API Key</label>
+                    <input type="password" id="ai_api_key_input" placeholder="Enter API key..."
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('ai_api_key', this.value)">
+                    <p class="text-[10px] text-zinc-600 mt-1">Stored in softarr.ini. Not displayed after saving.</p>
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-500 mb-1">Rate limit (requests per hour)</label>
+                    <input type="number" id="ai_rate_limit_input" min="1" max="1000"
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('ai_rate_limit_per_hour', this.value)">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Web Push Notifications -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800" x-data="{ expanded: false, generating: false, genResult: '' }">
+        <button @click="expanded = !expanded" class="w-full flex items-center justify-between text-left">
+            <h4 class="text-sm font-medium text-zinc-300">Web Push Notifications</h4>
+            <svg class="w-4 h-4 text-zinc-500 transition-transform" :class="{ 'rotate-180': expanded }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="expanded" x-transition class="mt-4 space-y-4">
+            <p class="text-xs text-zinc-500">Browser push notifications via Web Push (VAPID). Requires HTTPS in production. Subscribers are managed per-user in the browser.</p>
+            <div class="flex items-center gap-4">
+                <label class="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <input type="checkbox" id="push_notifications_enabled_toggle"
+                           class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                           onchange="saveSetting('push_notifications_enabled', this.checked ? 'true' : 'false')">
+                    Enable Web Push notifications
+                </label>
+            </div>
+            <div class="grid grid-cols-1 gap-3">
+                <div>
+                    <label class="block text-xs text-zinc-500 mb-1">VAPID Subject (email)</label>
+                    <input type="email" id="push_vapid_claims_sub_input" placeholder="mailto:admin@example.com"
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('push_vapid_claims_sub', this.value)">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-500 mb-1">VAPID Public Key</label>
+                    <input type="text" id="push_vapid_public_key_display" readonly
+                           class="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-400 font-mono focus:outline-none"
+                           placeholder="(not set)">
+                </div>
+            </div>
+            <button @click="generating = true; genResult = ''; fetch('/api/v1/push/generate-keys', {method: 'POST', headers: {'X-CSRF-Token': document.querySelector('meta[name=\'csrf-token\']').content}}).then(r => r.json()).then(d => { genResult = d.public_key ? 'Keys generated. Reload to see the new public key.' : (d.detail || 'Error'); generating = false; location.reload(); }).catch(e => { genResult = 'Error: ' + e.message; generating = false; })"
+                    :disabled="generating"
+                    class="bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                <span x-show="!generating">Generate VAPID Keys</span>
+                <span x-show="generating">Generating...</span>
+            </button>
+            <div x-show="genResult" class="text-xs text-zinc-400" x-text="genResult"></div>
+        </div>
+    </div>
+
+    <!-- UI Preferences -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800" x-data="{ expanded: false }">
+        <button @click="expanded = !expanded" class="w-full flex items-center justify-between text-left">
+            <h4 class="text-sm font-medium text-zinc-300">UI Preferences</h4>
+            <svg class="w-4 h-4 text-zinc-500 transition-transform" :class="{ 'rotate-180': expanded }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="expanded" x-transition class="mt-4 space-y-4">
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Default Search Mode</label>
+                <select id="default_search_mode_select"
+                        onchange="saveSetting('default_search_mode', this.value)"
+                        class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+                    <option value="standard">Standard</option>
+                    <option value="fuzzy">Fuzzy (typo-tolerant)</option>
+                    <option value="exact">Exact match</option>
+                    <option value="boolean">Boolean (AND / OR / NOT)</option>
+                    <option value="regex">Regex</option>
+                </select>
+                <p class="text-[10px] text-zinc-600 mt-1">Pre-selects the search mode on the Release Search page.</p>
+            </div>
+            <div>
+                <label class="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <input type="checkbox" id="quick_approve_mode_toggle"
+                           class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                           onchange="saveSetting('quick_approve_mode_enabled', this.checked ? 'true' : 'false')">
+                    Show Quick Approve in sidebar
+                </label>
+                <p class="text-[10px] text-zinc-600 mt-1 pl-6">Adds a Quick Approve shortcut to the navigation sidebar for mobile one-tap review.</p>
+            </div>
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Staging Auto-Cleanup (days)</label>
+                <div class="flex items-center gap-3">
+                    <input type="number" id="staging_auto_cleanup_input" min="0" max="365"
+                           class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 w-24 focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('staging_auto_cleanup_days', this.value)">
+                    <span class="text-xs text-zinc-500">days (0 = disabled)</span>
+                </div>
+                <p class="text-[10px] text-zinc-600 mt-1">Automatically remove unapproved staged releases older than this many days.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notifications -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800" x-data="{ expanded: false }">
+        <button @click="expanded = !expanded" class="w-full flex items-center justify-between text-left">
+            <h4 class="text-sm font-medium text-zinc-300">Notifications</h4>
+            <svg class="w-4 h-4 text-zinc-500 transition-transform" :class="{ 'rotate-180': expanded }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="expanded" x-transition class="mt-4 space-y-4">
+            <div class="flex items-center gap-4">
+                <label class="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <input type="checkbox" id="notifications_enabled_toggle"
+                           class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                           onchange="saveSetting('notifications_enabled', this.checked ? 'true' : 'false')">
+                    Enable notifications
+                </label>
+            </div>
+            <div class="space-y-2 pl-2">
+                <label class="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+                    <input type="checkbox" id="notify_on_new_release_toggle"
+                           onchange="saveSetting('notify_on_new_release', this.checked ? 'true' : 'false')"
+                           class="rounded border-zinc-600 bg-zinc-800 text-brand-500">
+                    Notify on new release discovered
+                </label>
+                <label class="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+                    <input type="checkbox" id="notify_on_flagged_toggle"
+                           onchange="saveSetting('notify_on_flagged', this.checked ? 'true' : 'false')"
+                           class="rounded border-zinc-600 bg-zinc-800 text-brand-500">
+                    Notify on release flagged
+                </label>
+                <label class="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+                    <input type="checkbox" id="notify_on_download_toggle"
+                           onchange="saveSetting('notify_on_download', this.checked ? 'true' : 'false')"
+                           class="rounded border-zinc-600 bg-zinc-800 text-brand-500">
+                    Notify on download queued
+                </label>
+            </div>
+            <!-- Discord Webhook -->
+            <div class="border-t border-zinc-800 pt-4" x-data="{ testing: false, result: null }">
+                <div class="flex items-center justify-between mb-3">
+                    <h5 class="text-xs font-medium text-zinc-400">Discord Webhook</h5>
+                    <button @click="testing = true; result = null; testNotificationChannel('discord').then(r => { result = r; testing = false; })"
+                            :disabled="testing"
+                            class="text-[10px] px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 transition-colors">
+                        <span x-show="!testing">Send Test</span>
+                        <span x-show="testing">Sending...</span>
+                    </button>
+                </div>
+                <div class="space-y-2">
+                    <label class="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+                        <input type="checkbox" id="discord_webhook_enabled_toggle"
+                               onchange="saveSetting('discord_webhook_enabled', this.checked ? 'true' : 'false')"
+                               class="rounded border-zinc-600 bg-zinc-800 text-brand-500">
+                        Enable Discord webhook
+                    </label>
+                    <input type="url" id="discord_webhook_url_input" placeholder="https://discord.com/api/webhooks/..."
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('discord_webhook_url', this.value)">
+                    <div class="mt-2">
+                        <p class="text-[10px] text-zinc-500 mb-1">Events (leave blank or "all" for all events)</p>
+                        <input type="text" id="discord_events_input" placeholder="all"
+                               class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-brand-500"
+                               onblur="saveSetting('discord_events', this.value || 'all')">
+                        <p class="text-[10px] text-zinc-600 mt-1">e.g. new_release_discovered,release_flagged,download_complete</p>
+                    </div>
+                </div>
+                <div x-show="result !== null" x-transition class="mt-2 text-xs p-2 rounded-lg"
+                     :class="result && result.ok ? 'bg-brand-900/30 text-brand-300' : 'bg-red-900/30 text-red-300'"
+                     x-text="result ? (result.ok ? 'Test sent successfully.' : ('Error: ' + (result.error || 'Unknown'))) : ''"></div>
+            </div>
+            <!-- HTTP Webhook -->
+            <div class="border-t border-zinc-800 pt-4" x-data="{ testing: false, result: null }">
+                <div class="flex items-center justify-between mb-3">
+                    <h5 class="text-xs font-medium text-zinc-400">HTTP Webhook</h5>
+                    <button @click="testing = true; result = null; testNotificationChannel('http').then(r => { result = r; testing = false; })"
+                            :disabled="testing"
+                            class="text-[10px] px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 transition-colors">
+                        <span x-show="!testing">Send Test</span>
+                        <span x-show="testing">Sending...</span>
+                    </button>
+                </div>
+                <div class="space-y-2">
+                    <label class="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+                        <input type="checkbox" id="http_webhook_enabled_toggle"
+                               onchange="saveSetting('http_webhook_enabled', this.checked ? 'true' : 'false')"
+                               class="rounded border-zinc-600 bg-zinc-800 text-brand-500">
+                        Enable HTTP webhook
+                    </label>
+                    <input type="url" id="http_webhook_url_input" placeholder="https://your-webhook-endpoint.com/..."
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('http_webhook_url', this.value)">
+                    <div class="mt-2">
+                        <p class="text-[10px] text-zinc-500 mb-1">Events (leave blank or "all" for all events)</p>
+                        <input type="text" id="http_webhook_events_input" placeholder="all"
+                               class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-brand-500"
+                               onblur="saveSetting('http_webhook_events', this.value || 'all')">
+                    </div>
+                </div>
+                <div x-show="result !== null" x-transition class="mt-2 text-xs p-2 rounded-lg"
+                     :class="result && result.ok ? 'bg-brand-900/30 text-brand-300' : 'bg-red-900/30 text-red-300'"
+                     x-text="result ? (result.ok ? 'Test sent successfully.' : ('Error: ' + (result.error || 'Unknown'))) : ''"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification History -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800" x-data="notifHistorySection()">
+        <div class="flex items-center justify-between mb-4">
+            <h4 class="text-sm font-medium text-zinc-300">Notification History</h4>
+            <button @click="load()" class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">Refresh</button>
+        </div>
+        <template x-if="items.length === 0 && !loading">
+            <div class="text-xs text-zinc-500">No notification history recorded yet.</div>
+        </template>
+        <div x-show="loading" class="text-xs text-zinc-500">Loading...</div>
+        <div class="space-y-1.5" x-show="!loading && items.length > 0">
+            <template x-for="entry in items" :key="entry.id">
+                <div class="flex items-center gap-3 text-xs bg-zinc-800/40 rounded-lg px-3 py-2">
+                    <span :class="entry.success ? 'text-brand-400' : 'text-red-400'" x-text="entry.success ? 'OK' : 'FAIL'"></span>
+                    <span class="text-zinc-500" x-text="entry.channel"></span>
+                    <span class="text-zinc-400 flex-1" x-text="entry.event"></span>
+                    <span class="text-zinc-600" x-text="entry.error_message || ''"></span>
+                    <span class="text-zinc-600 shrink-0" x-text="entry.sent_at ? entry.sent_at.substring(0, 16).replace('T', ' ') : '--'"></span>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Backup -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800" x-data="{ triggering: false, backupResult: null }">
+        <div class="flex items-center justify-between mb-4">
+            <h4 class="text-sm font-medium text-zinc-300">Scheduled Backup</h4>
+            <button @click="triggering = true; backupResult = null; triggerBackup().then(r => { backupResult = r; triggering = false; })"
+                    :disabled="triggering"
+                    class="text-xs bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 px-3 py-1 rounded-lg transition-colors">
+                <span x-show="!triggering">Run Now</span>
+                <span x-show="triggering">Running...</span>
+            </button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <label class="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer md:col-span-2">
+                <input type="checkbox" id="backup_enabled_toggle"
+                       class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                       onchange="saveSetting('backup_enabled', this.checked ? 'true' : 'false')">
+                Enable scheduled backups
+            </label>
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Backup Directory</label>
+                <input type="text" id="backup_dir_input" placeholder="/path/to/backup"
+                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+                       onblur="saveSetting('backup_dir', this.value)">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs text-zinc-500 mb-1">Interval (hours)</label>
+                    <input type="number" id="backup_interval_input" placeholder="24" min="1"
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('backup_interval_hours', this.value)">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-500 mb-1">Keep Count</label>
+                    <input type="number" id="backup_keep_input" placeholder="7" min="1"
+                           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+                           onblur="saveSetting('backup_keep_count', this.value)">
+                </div>
+            </div>
+        </div>
+        <div x-show="backupResult !== null" x-transition class="text-xs p-2 rounded-lg"
+             :class="backupResult && backupResult.status === 'ok' ? 'bg-brand-900/30 text-brand-300' : 'bg-amber-900/30 text-amber-300'"
+             x-text="backupResult ? ('Status: ' + backupResult.status + (backupResult.files ? ' -- ' + backupResult.files.length + ' file(s) written' : '') + (backupResult.pruned ? ', pruned ' + backupResult.pruned : '')) : ''"></div>
+    </div>
+
+    <!-- Language -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h4 class="text-sm font-medium text-zinc-300 mb-1">Language</h4>
+        <p class="text-xs text-zinc-500 mb-4">
+            Select your preferred language for the user interface. Changes take effect immediately
+            on save. Non-English locales currently display English text as a placeholder until
+            translations are contributed.
+        </p>
+        <div class="max-w-xs">
+            <label for="language-select" class="block text-xs text-zinc-500 mb-1">
+                Interface Language
+            </label>
+            <select id="language-select"
+                    class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-brand-500">
+                <option value="en">English</option>
+                <option value="de">German</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="it">Italian</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="pt">Portuguese</option>
+                <option value="zh">Chinese (Simplified)</option>
+                <option value="ar">Arabic</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Audit Log -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <div class="flex items-center justify-between mb-4">
+            <h4 class="text-sm font-medium text-zinc-300">Recent Audit Log</h4>
+            <a href="/api/v1/settings/audit-log/export"
+               class="text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 px-3 py-1 rounded-lg transition-colors">
+                Export CSV
+            </a>
+        </div>
+        <div id="audit-log"
+             hx-get="/api/v1/settings/audit-log?limit=20"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <p class="text-sm text-zinc-500">Loading...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+    async function saveSabnzbdConfig() {
+        var body = {
+            url: document.getElementById('sab-url').value,
+            api_key: document.getElementById('sab-api-key').value,
+            category: document.getElementById('sab-category').value || 'software',
+            ssl_verify: true,
+            timeout: 30,
+        };
+        var resp = await fetch('/api/v1/actions/sabnzbd/config', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            body: JSON.stringify(body),
+        });
+        if (resp.ok) {
+            alert('SABnzbd settings saved.');
+        } else {
+            var err = await resp.json();
+            alert('Error: ' + (err.detail || 'Unknown error'));
+        }
+    }
+
+    async function testNotificationChannel(channel) {
+        try {
+            var resp = await fetch('/api/v1/settings/notifications/test', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+                body: JSON.stringify({channel: channel}),
+            });
+            return await resp.json();
+        } catch (e) {
+            return {ok: false, error: e.message};
+        }
+    }
+
+    async function triggerBackup() {
+        try {
+            var resp = await fetch('/api/v1/settings/backup/trigger', {
+                method: 'POST',
+                headers: {'X-CSRF-Token': csrfToken},
+            });
+            return await resp.json();
+        } catch (e) {
+            return {status: 'error', error: e.message};
+        }
+    }
+
+    function notifHistorySection() {
+        return {
+            items: [],
+            loading: false,
+            async load() {
+                this.loading = true;
+                try {
+                    var resp = await fetch('/api/v1/settings/notification-history?limit=20');
+                    if (resp.ok) this.items = await resp.json();
+                } catch (e) { /* ignore */ }
+                this.loading = false;
+            },
+            init() { this.load(); }
+        };
+    }
+
+    async function testSabnzbd() {
+        try {
+            var resp = await fetch('/api/v1/actions/sabnzbd/test', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            });
+            var data = await resp.json();
+            if (resp.ok) {
+                return 'ok - Connected to SABnzbd ' + (data.version || '');
+            }
+            return 'Error: ' + (data.detail || 'Unknown error');
+        } catch (e) {
+            return 'Error: ' + e.message;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // qBittorrent configuration
+    // -----------------------------------------------------------------------
+
+    async function saveQbtConfig() {
+        var body = {
+            url: document.getElementById('qbt-url').value.trim(),
+            username: document.getElementById('qbt-username').value.trim(),
+            password: document.getElementById('qbt-password').value,
+            category: document.getElementById('qbt-category').value.trim() || 'software',
+            ssl_verify: true,
+            timeout: 30,
+        };
+        var resp = await fetch('/api/v1/actions/qbittorrent/config', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            body: JSON.stringify(body),
+        });
+        if (resp.ok) {
+            alert('qBittorrent settings saved.');
+        } else {
+            var err = await resp.json();
+            alert('Error: ' + (err.detail || 'Unknown error'));
+        }
+    }
+
+    async function testQbt() {
+        try {
+            var resp = await fetch('/api/v1/actions/qbittorrent/test', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            });
+            var data = await resp.json();
+            if (resp.ok) return 'ok - Connected to qBittorrent ' + (data.version || '');
+            return 'Error: ' + (data.detail || 'Unknown error');
+        } catch (e) {
+            return 'Error: ' + e.message;
+        }
+    }
+
+    async function setActiveClient(client) {
+        var resp = await fetch('/api/v1/actions/active-client', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            body: JSON.stringify({client: client}),
+        });
+        if (!resp.ok) {
+            var err = await resp.json();
+            alert('Error: ' + (err.detail || 'Unknown error'));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Usenet adapter toggle
+    // -----------------------------------------------------------------------
+
+    async function toggleUsenet(btn) {
+        var current = btn.dataset.enabled === 'true';
+        var next = !current;
+        var resp = await fetch('/api/v1/settings/', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            body: JSON.stringify({key: 'usenet_adapter_enabled', value: next ? 'true' : 'false'}),
+        });
+        if (resp.ok) {
+            btn.dataset.enabled = String(next);
+            btn.title = next ? 'Enabled' : 'Disabled';
+            btn.className = btn.className
+                .replace(next ? 'bg-zinc-700' : 'bg-brand-600', next ? 'bg-brand-600' : 'bg-zinc-700');
+            var dot = btn.querySelector('span');
+            dot.className = dot.className
+                .replace(next ? 'translate-x-1' : 'translate-x-4', next ? 'translate-x-4' : 'translate-x-1');
+        } else {
+            alert('Failed to toggle Usenet adapter.');
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Usenet indexer CRUD
+    // -----------------------------------------------------------------------
+
+    // -----------------------------------------------------------------------
+    // Predefined indexer presets
+    // -----------------------------------------------------------------------
+    function applyIndexerPreset() {
+        var sel = document.getElementById('indexer-preset');
+        var val = sel.value;
+        if (!val) return;
+        var parts = val.split('|');
+        var suggestedName = parts[0] || '';
+        var url = parts[1] || '';
+        var cats = parts[2] || '4000,4010,4020,4030,4040,4050,4060,4070';
+        // Only pre-fill URL and categories -- name and API key are still manual
+        if (url && url !== 'https://') {
+            document.getElementById('indexer-url').value = url;
+        }
+        document.getElementById('indexer-categories').value = cats;
+        // Suggest a name if the name field is empty
+        if (!document.getElementById('indexer-name').value) {
+            document.getElementById('indexer-name').placeholder = suggestedName;
+        }
+        sel.value = '';
+    }
+
+    function resetIndexerForm() {
+        document.getElementById('indexer-edit-name').value = '';
+        document.getElementById('indexer-name').value = '';
+        document.getElementById('indexer-url').value = '';
+        document.getElementById('indexer-api-key').value = '';
+        document.getElementById('indexer-categories').value = '4000,4010,4020,4030,4040,4050,4060,4070';
+        document.getElementById('indexer-priority').value = '0';
+        document.getElementById('indexer-enabled').checked = true;
+        document.getElementById('indexer-form-title').textContent = 'Add Indexer';
+        document.getElementById('indexer-preset').value = '';
+    }
+
+    async function editIndexer(name) {
+        var resp = await fetch('/api/v1/indexers/' + encodeURIComponent(name), {
+            headers: {'X-CSRF-Token': csrfToken},
+        });
+        if (!resp.ok) { alert('Failed to load indexer.'); return; }
+        var data = await resp.json();
+        document.getElementById('indexer-edit-name').value = data.name;
+        document.getElementById('indexer-name').value = data.name;
+        document.getElementById('indexer-url').value = data.url;
+        document.getElementById('indexer-api-key').value = '';
+        document.getElementById('indexer-api-key').placeholder = data.api_key;
+        document.getElementById('indexer-categories').value = data.categories || '4000,4010,4020,4030,4040,4050,4060,4070';
+        document.getElementById('indexer-priority').value = data.priority;
+        document.getElementById('indexer-enabled').checked = data.enabled;
+        document.getElementById('indexer-form-title').textContent = 'Edit Indexer';
+    }
+
+    async function saveIndexer() {
+        var editName = document.getElementById('indexer-edit-name').value;
+        var name = document.getElementById('indexer-name').value.trim();
+        var url = document.getElementById('indexer-url').value.trim();
+        var apiKey = document.getElementById('indexer-api-key').value;
+        var categories = document.getElementById('indexer-categories').value.trim() || '4000,4010,4020,4030,4040,4050,4060,4070';
+        var priority = parseInt(document.getElementById('indexer-priority').value) || 0;
+        var enabled = document.getElementById('indexer-enabled').checked;
+
+        if (!name || !url) {
+            alert('Name and URL are required.');
+            return;
+        }
+
+        var method, endpoint, body;
+        if (editName) {
+            method = 'PATCH';
+            endpoint = '/api/v1/indexers/' + encodeURIComponent(editName);
+            body = {name: name, url: url, priority: priority, enabled: enabled, categories: categories};
+            if (apiKey) body.api_key = apiKey;
+        } else {
+            if (!apiKey) {
+                alert('API key is required for new indexers.');
+                return;
+            }
+            method = 'POST';
+            endpoint = '/api/v1/indexers/';
+            body = {name: name, url: url, api_key: apiKey, priority: priority, enabled: enabled, categories: categories};
+        }
+
+        var resp = await fetch(endpoint, {
+            method: method,
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            body: JSON.stringify(body),
+        });
+        if (resp.ok) {
+            location.reload();
+        } else {
+            var err = await resp.json();
+            alert('Error: ' + (err.detail || 'Unknown error'));
+        }
+    }
+
+    async function deleteIndexer(name) {
+        if (!confirm('Delete indexer "' + name + '"?')) return;
+        var resp = await fetch('/api/v1/indexers/' + encodeURIComponent(name), {
+            method: 'DELETE',
+            headers: {'X-CSRF-Token': csrfToken},
+        });
+        if (resp.ok) {
+            location.reload();
+        } else {
+            alert('Failed to delete indexer.');
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Generic adapter toggle (Torznab and similar)
+    // -----------------------------------------------------------------------
+    async function toggleAdapter(settingKey, btn) {
+        var current = btn.dataset.enabled === 'true';
+        var next = !current;
+        var resp = await fetch('/api/v1/settings/', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            body: JSON.stringify({key: settingKey, value: next ? 'true' : 'false'}),
+        });
+        if (resp.ok) {
+            btn.dataset.enabled = String(next);
+            btn.title = next ? 'Enabled' : 'Disabled';
+            btn.classList.toggle('bg-brand-600', next);
+            btn.classList.toggle('bg-zinc-700', !next);
+            var dot = btn.querySelector('span');
+            if (dot) {
+                dot.classList.toggle('translate-x-4', next);
+                dot.classList.toggle('translate-x-1', !next);
+            }
+        } else {
+            alert('Failed to update setting.');
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Hash source toggles and key save
+    // -----------------------------------------------------------------------
+    async function toggleHashSource(settingKey, btn) {
+        var current = btn.getAttribute('data-enabled') === 'true';
+        var newVal = !current;
+        var resp = await fetch('/api/v1/settings/', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            body: JSON.stringify({key: settingKey, value: newVal ? 'true' : 'false'}),
+        });
+        if (resp.ok) {
+            btn.setAttribute('data-enabled', newVal ? 'true' : 'false');
+            btn.setAttribute('title', newVal ? 'Enabled' : 'Disabled');
+            btn.classList.toggle('bg-brand-600', newVal);
+            btn.classList.toggle('bg-zinc-700', !newVal);
+            var knob = btn.querySelector('span');
+            if (knob) {
+                knob.classList.toggle('translate-x-4', newVal);
+                knob.classList.toggle('translate-x-1', !newVal);
+            }
+        } else {
+            alert('Failed to update setting.');
+        }
+    }
+
+    async function saveHashSourceKey(settingKey, inputId) {
+        var val = document.getElementById(inputId).value.trim();
+        if (!val) { alert('Please enter a value.'); return; }
+        var resp = await fetch('/api/v1/settings/', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            body: JSON.stringify({key: settingKey, value: val}),
+        });
+        if (resp.ok) {
+            document.getElementById(inputId).value = '';
+            document.getElementById(inputId).placeholder = 'Saved';
+        } else {
+            alert('Failed to save key.');
+        }
+    }
+
+    async function testVirusTotalKey() {
+        try {
+            var resp = await fetch('/api/v1/actions/virustotal/test', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            });
+            var data = await resp.json();
+            if (resp.ok) {
+                return {ok: true, msg: 'Connected -- ' + (data.message || 'API key is valid.')};
+            }
+            return {ok: false, msg: 'Error: ' + (data.detail || 'Unknown error')};
+        } catch (e) {
+            return {ok: false, msg: 'Error: ' + e.message};
+        }
+    }
+
+
+    // -----------------------------------------------------------------------
+    // Generic setting save helper
+    // -----------------------------------------------------------------------
+    async function saveSetting(key, value) {
+        var resp = await fetch('/api/v1/settings/', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            body: JSON.stringify({key: key, value: String(value)}),
+        });
+        if (!resp.ok) {
+            var err = await resp.json();
+            alert('Failed to save ' + key + ': ' + (err.detail || 'Unknown error'));
+        }
+    }
+
+    async function triggerScheduler() {
+        var btn = document.getElementById('scheduler-run-btn');
+        var status = document.getElementById('scheduler-run-status');
+        if (btn) { btn.disabled = true; btn.textContent = 'Running...'; }
+        if (status) status.textContent = '';
+        try {
+            var resp = await fetch('/api/v1/settings/scheduler/trigger', {
+                method: 'POST',
+                headers: {'X-CSRF-Token': csrfToken},
+            });
+            var data = await resp.json();
+            if (resp.ok) {
+                if (status) status.textContent = 'Done.';
+            } else {
+                if (status) status.textContent = 'Error: ' + (data.detail || 'Unknown');
+            }
+        } catch (e) {
+            if (status) status.textContent = 'Error: ' + e.message;
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Run Now'; }
+        }
+    }
+
+    // Initialise UI fields from loaded settings
+    (async function initSettings() {
+        try {
+            var resp = await fetch('/api/v1/settings/');
+            if (!resp.ok) return;
+            var data = await resp.json();
+            var s = data.settings || {};
+
+            // Scheduler
+            var schedEnabled = document.getElementById('scheduler_enabled_toggle');
+            if (schedEnabled) schedEnabled.checked = s.scheduler_enabled === 'true';
+            var schedInterval = document.getElementById('scheduler_interval_input');
+            if (schedInterval) schedInterval.value = s.scheduler_interval_minutes || '60';
+
+            // Notifications
+            var notifEnabled = document.getElementById('notifications_enabled_toggle');
+            if (notifEnabled) notifEnabled.checked = s.notifications_enabled === 'true';
+            var notifNew = document.getElementById('notify_on_new_release_toggle');
+            if (notifNew) notifNew.checked = s.notify_on_new_release !== 'false';
+            var notifFlag = document.getElementById('notify_on_flagged_toggle');
+            if (notifFlag) notifFlag.checked = s.notify_on_flagged !== 'false';
+            var notifDl = document.getElementById('notify_on_download_toggle');
+            if (notifDl) notifDl.checked = s.notify_on_download !== 'false';
+            var discordEnabled = document.getElementById('discord_webhook_enabled_toggle');
+            if (discordEnabled) discordEnabled.checked = s.discord_webhook_enabled === 'true';
+            var discordUrl = document.getElementById('discord_webhook_url_input');
+            if (discordUrl) discordUrl.value = s.discord_webhook_url || '';
+            var discordEvents = document.getElementById('discord_events_input');
+            if (discordEvents) discordEvents.value = s.discord_events || 'all';
+            var httpEnabled = document.getElementById('http_webhook_enabled_toggle');
+            if (httpEnabled) httpEnabled.checked = s.http_webhook_enabled === 'true';
+            var httpUrl = document.getElementById('http_webhook_url_input');
+            if (httpUrl) httpUrl.value = s.http_webhook_url || '';
+            var httpEvents = document.getElementById('http_webhook_events_input');
+            if (httpEvents) httpEvents.value = s.http_webhook_events || 'all';
+
+            // Retention
+            var retEnabled = document.getElementById('retention_enabled_toggle');
+            if (retEnabled) retEnabled.checked = s.retention_enabled === 'true';
+            var retDays = document.getElementById('retention_days_input');
+            if (retDays) retDays.value = s.retention_discovered_days || '30';
+
+            // Password policy
+            var pwdMinLen = document.getElementById('pwd_min_length');
+            if (pwdMinLen) pwdMinLen.value = s.password_min_length || '12';
+            var pwdHistory = document.getElementById('pwd_history_count');
+            if (pwdHistory) pwdHistory.value = s.password_history_count || '5';
+            var pwdMaxAge = document.getElementById('pwd_max_age');
+            if (pwdMaxAge) pwdMaxAge.value = s.password_max_age_days || '0';
+            var pwdUpper = document.getElementById('pwd_uppercase');
+            if (pwdUpper) pwdUpper.checked = s.password_require_uppercase === 'true';
+            var pwdNums = document.getElementById('pwd_numbers');
+            if (pwdNums) pwdNums.checked = s.password_require_numbers === 'true';
+            var pwdSpecial = document.getElementById('pwd_special');
+            if (pwdSpecial) pwdSpecial.checked = s.password_require_special === 'true';
+
+            // Analysis & heuristic settings
+            var totpIssuer = document.getElementById('totp_issuer');
+            if (totpIssuer) totpIssuer.value = s.totp_issuer || 'Softarr';
+            var antipiracy = document.getElementById('antipiracy_enabled');
+            if (antipiracy) antipiracy.checked = s.antipiracy_enabled === 'true';
+            setSensitivityUI(s.heuristic_sensitivity || 'medium');
+
+            // AI assistant
+            var aiEnabled = document.getElementById('ai_enabled_toggle');
+            if (aiEnabled) aiEnabled.checked = s.ai_enabled === 'true';
+            var aiProvider = document.getElementById('ai_provider_input');
+            if (aiProvider) aiProvider.value = s.ai_provider || 'openai';
+            var aiModel = document.getElementById('ai_model_input');
+            if (aiModel) aiModel.value = s.ai_model || 'gpt-4o-mini';
+            var aiBaseUrl = document.getElementById('ai_base_url_input');
+            if (aiBaseUrl) aiBaseUrl.value = s.ai_base_url || 'https://api.openai.com/v1';
+            var aiRateLimit = document.getElementById('ai_rate_limit_input');
+            if (aiRateLimit) aiRateLimit.value = s.ai_rate_limit_per_hour || '20';
+
+            // Web Push notifications
+            var pushEnabled = document.getElementById('push_notifications_enabled_toggle');
+            if (pushEnabled) pushEnabled.checked = s.push_notifications_enabled === 'true';
+            var pushSub = document.getElementById('push_vapid_claims_sub_input');
+            if (pushSub) pushSub.value = s.push_vapid_claims_sub || '';
+            var pushPubKey = document.getElementById('push_vapid_public_key_display');
+            if (pushPubKey) pushPubKey.value = s.push_vapid_public_key || '';
+
+            // UI preferences
+            var searchModeEl = document.getElementById('default_search_mode_select');
+            if (searchModeEl) searchModeEl.value = s.default_search_mode || 'standard';
+            var quickApprove = document.getElementById('quick_approve_mode_toggle');
+            if (quickApprove) quickApprove.checked = s.quick_approve_mode_enabled === 'true';
+            var stagingCleanup = document.getElementById('staging_auto_cleanup_input');
+            if (stagingCleanup) stagingCleanup.value = s.staging_auto_cleanup_days || '0';
+        } catch(e) {}
+    })();
+
+    function setSensitivity(level) {
+        saveSetting('heuristic_sensitivity', level);
+        setSensitivityUI(level);
+    }
+
+    function setSensitivityUI(level) {
+        ['low', 'medium', 'high'].forEach(function(l) {
+            var btn = document.getElementById('sens-' + l);
+            if (!btn) return;
+            btn.classList.remove('bg-brand-700', 'text-brand-100', 'border-brand-600', 'text-zinc-400');
+            if (l === level) {
+                btn.classList.add('bg-brand-700', 'text-brand-100', 'border-brand-600');
+            } else {
+                btn.classList.add('text-zinc-400');
+            }
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // Audit log rendering
+    // -----------------------------------------------------------------------
+    var ACTION_COLOURS = {
+        'search':  'text-zinc-400',
+        'process': 'text-blue-400',
+        'approve': 'text-green-400',
+        'override': 'text-amber-400',
+        'reject':  'text-red-400',
+        'download': 'text-brand-400',
+    };
+
+    document.body.addEventListener('htmx:afterRequest', function(event) {
+        if (event.detail.target && event.detail.target.id === 'audit-log') {
+            try {
+                var data = JSON.parse(event.detail.xhr.responseText);
+                var logs = data.logs || [];
+                var container = document.getElementById('audit-log');
+                if (logs.length === 0) {
+                    container.innerHTML = '<p class="text-sm text-zinc-500">No audit log entries yet.</p>';
+                    return;
+                }
+                var html = '<div class="space-y-2">';
+                logs.forEach(function(log) {
+                    var actionColour = ACTION_COLOURS[log.action] || 'text-zinc-400';
+                    // Flag-aware colouring: process entries with flags become amber/red
+                    if (log.action === 'process' && log.details) {
+                        var fc = (log.details.flagged_count || 0);
+                        if (fc > 0) actionColour = 'text-amber-400';
+                    }
+                    html += '<div class="text-xs bg-zinc-800/50 rounded-lg px-3 py-2 space-y-1">';
+                    html += '<div class="flex items-center justify-between">';
+                    html += '<div class="flex items-center gap-3">';
+                    html += '<span class="font-mono font-medium ' + actionColour + '">' + (log.action || '') + '</span>';
+                    html += '<span class="text-zinc-500">' + (log.entity_type || '') + '</span>';
+                    if (log.user) html += '<span class="text-zinc-600">' + log.user + '</span>';
+                    html += '</div>';
+                    html += '<span class="text-zinc-600">' + (log.timestamp ? new Date(log.timestamp).toLocaleString() : '') + '</span>';
+                    html += '</div>';
+                    // Details line: search context, counts, flags
+                    if (log.details && Object.keys(log.details).length > 0) {
+                        var parts = [];
+                        if (log.details.canonical_name) parts.push('software: ' + log.details.canonical_name);
+                        if (log.details.source_type)    parts.push('source: ' + log.details.source_type);
+                        if (log.details.result_count !== undefined) parts.push('results: ' + log.details.result_count);
+                        if (log.details.flagged_count)  parts.push('flagged: ' + log.details.flagged_count);
+                        if (log.details.trust_status)   parts.push('trust: ' + log.details.trust_status);
+                        if (log.details.flag_status && log.details.flag_status !== 'none') {
+                            parts.push('<span class="text-amber-400">flag: ' + log.details.flag_status + '</span>');
+                        }
+                        if (parts.length > 0) {
+                            html += '<div class="text-zinc-500 pl-1">' + parts.join(' &middot; ') + '</div>';
+                        }
+                    }
+                    html += '</div>';
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            } catch(e) {}
+        }
+    });
+</script>
+
+<script>
+// Language selector -- applies the selected language via the users API
+(function () {
+    var langSelect = document.getElementById('language-select');
+    if (!langSelect) return;
+
+    // Fetch current language on load
+    fetch('/api/v1/users/me/language')
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+            if (data && data.language) {
+                langSelect.value = data.language;
+            }
+        })
+        .catch(function () {});
+
+    langSelect.addEventListener('change', function () {
+        var lang = langSelect.value;
+        var csrf = document.querySelector('meta[name="csrf-token"]').content;
+        fetch('/api/v1/users/me/language', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrf,
+            },
+            body: JSON.stringify({ language: lang }),
+        }).then(function (r) {
+            if (r.ok || r.status === 204) {
+                // Reload to apply the new lang attribute
+                window.location.reload();
+            }
+        }).catch(function () {});
+    });
+}());
+</script>
+{% endblock %}

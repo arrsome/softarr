@@ -1,0 +1,20 @@
+{
+  "name": "Softarr",
+  "short_name": "Softarr",
+  "description": "Software Release Manager",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a1a",
+  "theme_color": "#1a1a1a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/images/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities"],
+  "lang": "en-AU"
+}

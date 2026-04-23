@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h3 class="text-2xl font-semibold mb-1">Welcome to Softarr</h3>
+        <p class="text-zinc-400 text-sm mb-6">Structured software release management with verification, risk visibility, and automated safety ratings.</p>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
+            <div class="bg-zinc-800/60 rounded-lg p-5">
+                <div class="text-brand-400 text-3xl font-mono" id="stat-software">--</div>
+                <div class="text-xs text-zinc-500 mt-1">Software Entries</div>
+            </div>
+            <div class="bg-zinc-800/60 rounded-lg p-5">
+                <div class="text-brand-300 text-3xl font-mono" id="stat-monitored">--</div>
+                <div class="text-xs text-zinc-500 mt-1">Monitored</div>
+            </div>
+            <div class="bg-zinc-800/60 rounded-lg p-5">
+                <a href="/wanted" class="block">
+                    <div class="text-amber-300 text-3xl font-mono" id="stat-wanted">--</div>
+                    <div class="text-xs text-zinc-500 mt-1">Wanted</div>
+                </a>
+            </div>
+            <div class="bg-zinc-800/60 rounded-lg p-5">
+                <div class="text-zinc-300 text-3xl font-mono" id="stat-total">--</div>
+                <div class="text-xs text-zinc-500 mt-1">Total Releases</div>
+            </div>
+            <div class="bg-zinc-800/60 rounded-lg p-5">
+                <div class="text-green-400 text-3xl font-mono" id="stat-safe">--</div>
+                <div class="text-xs text-zinc-500 mt-1">Safe Releases</div>
+            </div>
+            <div class="bg-zinc-800/60 rounded-lg p-5">
+                <div class="text-amber-400 text-3xl font-mono" id="stat-flagged">--</div>
+                <div class="text-xs text-zinc-500 mt-1">Flagged</div>
+            </div>
+            <div class="bg-zinc-800/60 rounded-lg p-5">
+                <div class="text-blue-400 text-3xl font-mono" id="stat-downloaded">--</div>
+                <div class="text-xs text-zinc-500 mt-1">Downloaded</div>
+            </div>
+            <div class="bg-zinc-800/60 rounded-lg p-5">
+                <div class="text-cyan-400 text-3xl font-mono" id="stat-downloaded-week">--</div>
+                <div class="text-xs text-zinc-500 mt-1">Downloads (7d)</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+            <h4 class="text-sm font-medium text-zinc-400 mb-4">Quick Actions</h4>
+            <div class="space-y-2">
+                <a href="/software" class="block bg-zinc-800 hover:bg-zinc-700 rounded-lg px-4 py-3 text-sm transition-colors">
+                    Manage Software Library
+                </a>
+                <a href="/wanted" class="block bg-zinc-800 hover:bg-zinc-700 rounded-lg px-4 py-3 text-sm transition-colors">
+                    View Wanted List
+                </a>
+                <a href="/releases/search" class="block bg-zinc-800 hover:bg-zinc-700 rounded-lg px-4 py-3 text-sm transition-colors">
+                    Search for Releases
+                </a>
+                <a href="/releases" class="block bg-zinc-800 hover:bg-zinc-700 rounded-lg px-4 py-3 text-sm transition-colors">
+                    View Releases
+                </a>
+                <a href="/history" class="block bg-zinc-800 hover:bg-zinc-700 rounded-lg px-4 py-3 text-sm transition-colors">
+                    View Activity History
+                </a>
+            </div>
+        </div>
+
+        <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+            <h4 class="text-sm font-medium text-zinc-400 mb-4">Workflow</h4>
+            <ol class="space-y-3 text-sm text-zinc-300">
+                <li class="flex items-start gap-3">
+                    <span class="shrink-0 w-5 h-5 rounded-full bg-brand-900 text-brand-400 flex items-center justify-center text-[10px] font-bold mt-0.5">1</span>
+                    Add software to the allowlist with expected publisher and OS details.
+                </li>
+                <li class="flex items-start gap-3">
+                    <span class="shrink-0 w-5 h-5 rounded-full bg-brand-900 text-brand-400 flex items-center justify-center text-[10px] font-bold mt-0.5">2</span>
+                    Search for releases from Usenet, GitHub, or vendor sources.
+                </li>
+                <li class="flex items-start gap-3">
+                    <span class="shrink-0 w-5 h-5 rounded-full bg-brand-900 text-brand-400 flex items-center justify-center text-[10px] font-bold mt-0.5">3</span>
+                    Review trust ratings and flag indicators in the Releases monitor.
+                </li>
+                <li class="flex items-start gap-3">
+                    <span class="shrink-0 w-5 h-5 rounded-full bg-brand-900 text-brand-400 flex items-center justify-center text-[10px] font-bold mt-0.5">4</span>
+                    Click Download to queue safe releases directly to SABnzbd.
+                </li>
+            </ol>
+        </div>
+    </div>
+</div>
+
+<script>
+// Load release and software stats for stat cards
+fetch('/api/v1/releases/stats')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        document.getElementById('stat-software').textContent = data.total_software ?? '--';
+        document.getElementById('stat-monitored').textContent = data.monitored ?? '--';
+        document.getElementById('stat-wanted').textContent = data.wanted ?? '--';
+        document.getElementById('stat-total').textContent = data.total ?? '--';
+        document.getElementById('stat-safe').textContent = data.safe ?? '--';
+        document.getElementById('stat-flagged').textContent = data.flagged ?? '--';
+        document.getElementById('stat-downloaded').textContent = data.downloaded ?? '--';
+        document.getElementById('stat-downloaded-week').textContent = data.downloaded_this_week ?? '--';
+    })
+    .catch(function() {});
+</script>
+{% endblock %}

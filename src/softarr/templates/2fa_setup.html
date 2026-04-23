@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Two-Factor Authentication Setup - Softarr{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto space-y-6">
+
+    <!-- 2FA security warning -- always visible, regardless of enrolment state -->
+    <div role="alert" style="
+        color: #cc0000;
+        font-size: 1.1rem;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        border: 1px solid #cc0000;
+        border-radius: 6px;
+        padding: 1rem 1.25rem;
+        background: rgba(204,0,0,0.05);
+        line-height: 1.6;
+    ">
+        <p style="margin:0 0 0.5rem 0;font-weight:600">
+            Multi-Factor Authentication (2FA) is strongly recommended.
+        </p>
+        <p style="margin:0 0 0.5rem 0">
+            Accounts without 2FA are significantly more vulnerable to unauthorised access.
+        </p>
+        <p style="margin:0 0 0.5rem 0">
+            Industry reporting has shown that 99.9 percent of compromised accounts did not have
+            multi-factor authentication enabled.
+        </p>
+        <p style="margin:0">
+            If you choose not to enable 2FA, you accept the increased risk of account compromise.
+        </p>
+    </div>
+
+    <!-- Skip link for users who do not wish to set up 2FA right now -->
+    <div>
+        <a href="/"
+           style="font-size:0.875rem;color:#888;text-decoration:underline"
+           aria-label="Skip 2FA setup and continue to dashboard">
+            Continue to Dashboard without enabling 2FA
+        </a>
+    </div>
+
+    <div class="flex items-center justify-between">
+        <h1 class="text-xl font-bold">Two-Factor Authentication</h1>
+        <a href="/settings" class="text-sm text-zinc-400 hover:text-zinc-200">Back to Settings</a>
+    </div>
+
+    {% if totp_enabled %}
+    <!-- 2FA is currently active -->
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-2 h-2 rounded-full bg-brand-400"></div>
+            <h2 class="font-semibold">2FA is enabled on your account</h2>
+        </div>
+        <p class="text-sm text-zinc-400 mb-6">
+            Your account is protected by a time-based one-time password (TOTP) authenticator app.
+            To disable 2FA, click the button below.
+        </p>
+        <form action="/auth/2fa/disable" method="POST">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <button type="submit"
+                    onclick="return confirm('Are you sure you want to disable two-factor authentication? This will make your account less secure.')"
+                    class="bg-red-700 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colours">
+                Disable 2FA
+            </button>
+        </form>
+    </div>
+    {% else %}
+    <!-- Enrolment flow -->
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-6 space-y-4">
+        <h2 class="font-semibold">Enrol an authenticator app</h2>
+        <p class="text-sm text-zinc-400">
+            Scan the QR code below with an authenticator app (e.g. Google Authenticator, Aegis, Bitwarden,
+            Authy). Then enter the 6-digit code shown by the app to confirm.
+        </p>
+
+        {% if error %}
+        <div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-3 py-2 text-sm">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        {% if qr_b64 %}
+        <div class="flex justify-center py-2">
+            <img src="data:image/png;base64,{{ qr_b64 }}"
+                 alt="TOTP QR code"
+                 class="rounded-lg border border-zinc-700 bg-white p-2"
+                 style="width: 200px; height: 200px;">
+        </div>
+        {% endif %}
+
+        {% if manual_key %}
+        <div>
+            <p class="text-xs text-zinc-500 mb-1">Manual entry key (if you cannot scan the QR code):</p>
+            <code class="block bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs font-mono tracking-wider break-all select-all">
+                {{ manual_key }}
+            </code>
+        </div>
+        {% endif %}
+
+        <form action="/auth/2fa/setup" method="POST" class="pt-2">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <label class="block text-xs text-zinc-500 mb-1">Confirmation Code</label>
+            <div class="flex gap-2">
+                <input type="text" name="code" required autofocus
+                       inputmode="numeric" autocomplete="one-time-code"
+                       pattern="[0-9]{6}" maxlength="6" placeholder="000000"
+                       class="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-center tracking-widest font-mono focus:outline-none focus:border-brand-500">
+                <button type="submit"
+                        class="bg-brand-600 hover:bg-brand-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colours">
+                    Enable 2FA
+                </button>
+            </div>
+            <p class="text-xs text-zinc-500 mt-2">
+                Enter the current 6-digit code from your authenticator app to confirm enrolment.
+            </p>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+        <h3 class="text-sm font-semibold mb-2">About 2FA</h3>
+        <ul class="text-xs text-zinc-400 space-y-1 list-disc list-inside">
+            <li>TOTP codes rotate every 30 seconds</li>
+            <li>The app works without an internet connection once set up</li>
+            <li>Codes are generated from the shared secret shown above -- store it safely as a backup</li>
+            <li>If you lose access to your authenticator, an admin can reset your account</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

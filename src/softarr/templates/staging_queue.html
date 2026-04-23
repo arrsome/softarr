@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+
+{% block content %}
+<script>
+    // Staging data for client-side filtering and sorting
+    var _stagingData = {{ staging_releases | map(attribute='id') | map('string') | list | tojson }};
+    var _stagingMeta = [
+        {% for release in staging_releases %}
+        {
+            id: "{{ release.id }}",
+            flag: "{{ release.flag_status.value }}",
+            source: "{{ release.source_type }}",
+            confidence: {{ release.confidence_score }},
+            created_at: "{{ release.created_at.isoformat() if release.created_at else '' }}"
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+</script>
+
+<div class="max-w-6xl mx-auto space-y-6"
+     x-data="{
+         selected: [],
+         filterFlag: 'all',
+         filterSource: 'all',
+         sortBy: 'confidence',
+         sortDir: 'desc',
+         bulkLoading: false,
+         bulkResult: '',
+         bulkResultOk: true,
+         get filteredIds() {
+             var data = window._stagingMeta || [];
+             var filtered = data.filter(r => {
+                 if (this.filterFlag !== 'all' && r.flag !== this.filterFlag) return false;
+                 if (this.filterSource !== 'all' && r.source !== this.filterSource) return false;
+                 return true;
+             });
+             filtered.sort((a, b) => {
+                 var av, bv;
+                 if (this.sortBy === 'confidence') { av = a.confidence; bv = b.confidence; }
+                 else { av = a.created_at; bv = b.created_at; }
+                 if (this.sortDir === 'desc') return av < bv ? 1 : -1;
+                 return av > bv ? 1 : -1;
+             });
+             return filtered.map(r => r.id);
+         },
+         get allSelected() {
+             return this.filteredIds.length > 0 && this.filteredIds.every(id => this.selected.includes(id));
+         },
+         toggleAll() {
+             if (this.allSelected) {
+                 this.selected = this.selected.filter(id => !this.filteredIds.includes(id));
+             } else {
+                 this.filteredIds.forEach(id => { if (!this.selected.includes(id)) this.selected.push(id); });
+             }
+         },
+         async bulkAction(action) {
+             if (this.selected.length === 0) return;
+             this.bulkLoading = true;
+             this.bulkResult = '';
+             try {
+                 var csrf = document.querySelector('meta[name=\'csrf-token\']').content;
+                 var resp = await fetch('/api/v1/staging/bulk-' + action, {
+                     method: 'POST',
+                     headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf},
+                     body: JSON.stringify({release_ids: this.selected}),
+                 });
+                 var data = await resp.json();
+                 if (resp.ok) {
+                     this.bulkResultOk = true;
+                     this.bulkResult = (action === 'approve' ? 'Approved' : 'Rejected') + ' ' + (data.approved_count || data.rejected_count || this.selected.length) + ' release(s).';
+                     this.selected = [];
+                     setTimeout(() => location.reload(), 800);
+                 } else {
+                     this.bulkResultOk = false;
+                     this.bulkResult = 'Error: ' + (data.detail || 'Unknown error');
+                 }
+             } catch (e) {
+                 this.bulkResultOk = false;
+                 this.bulkResult = 'Error: ' + e.message;
+             } finally {
+                 this.bulkLoading = false;
+             }
+         }
+     }">
+
+    <p class="text-sm text-zinc-400">Manage releases through the approval workflow. Stage discovered releases, review, then approve or reject.</p>
+
+    <!-- Bulk action bar (visible when items are selected) -->
+    <div x-show="selected.length > 0"
+         x-transition
+         class="sticky top-0 z-20 bg-zinc-800 border border-zinc-700 rounded-xl px-5 py-3 flex items-center gap-4"
+         aria-live="polite">
+        <span class="text-sm text-zinc-300" x-text="selected.length + ' selected'"></span>
+        <button @click="bulkAction('approve')"
+                :disabled="bulkLoading"
+                class="bg-green-700 hover:bg-green-600 disabled:opacity-50 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors">
+            Approve Selected
+        </button>
+        <button @click="bulkAction('reject')"
+                :disabled="bulkLoading"
+                class="bg-red-900/70 hover:bg-red-800 disabled:opacity-50 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors">
+            Reject Selected
+        </button>
+        <a href="/quick-approve"
+           class="text-brand-400 hover:text-brand-300 text-xs font-medium ml-auto">
+            Quick Approve Mode
+        </a>
+        <div x-show="bulkResult"
+             class="text-xs ml-2"
+             :class="bulkResultOk ? 'text-green-400' : 'text-red-400'"
+             x-text="bulkResult"></div>
+    </div>
+
+    <!-- Discovered releases (not yet staged) -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <h4 class="text-sm font-medium text-zinc-300 mb-4">Discovered Releases</h4>
+        {% if discovered_releases %}
+        <div class="space-y-2">
+            {% for release in discovered_releases %}
+            <div class="flex items-center justify-between bg-zinc-800/50 rounded-lg px-4 py-3">
+                <div class="flex items-center gap-4">
+                    <div>
+                        <span class="text-sm font-medium">{{ release.name }}</span>
+                        <span class="text-xs text-zinc-500 ml-2">{{ release.version }}</span>
+                    </div>
+                    {% if release.flag_status.value == 'warning' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-900/50 text-amber-300"
+                          data-tooltip="Warning: one or more risk indicators detected for this release.">Warning</span>
+                    {% elif release.flag_status.value == 'restricted' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-orange-900/50 text-orange-300"
+                          data-tooltip="Restricted: multiple risk indicators detected. Manual review recommended.">Restricted</span>
+                    {% elif release.flag_status.value == 'blocked' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-900/50 text-red-300"
+                          data-tooltip="Blocked: hash mismatch, invalid signature, or known-malicious detection. Do not approve without investigation.">Blocked</span>
+                    {% endif %}
+                </div>
+                <div class="flex items-center gap-2">
+                    <button hx-post="/api/v1/staging/transition/{{ release.id }}"
+                            hx-vals='{"target_state": "staged"}'
+                            hx-headers='{"Content-Type": "application/json", "X-CSRF-Token": "{{ csrf_token }}"}'
+                            hx-swap="none"
+                            hx-on::after-request="location.reload()"
+                            class="bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                        Stage for Review
+                    </button>
+                    <a href="/releases/{{ release.id }}" class="text-brand-400 hover:text-brand-300 text-xs font-medium">
+                        Details
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-zinc-500">No new discoveries. Search for releases to populate this list.</p>
+        {% endif %}
+    </div>
+
+    <!-- Filter and sort bar -->
+    <div class="bg-zinc-900 rounded-xl px-5 py-3 border border-zinc-800 flex flex-wrap items-center gap-4">
+        <span class="text-xs font-medium text-zinc-500 uppercase tracking-wider">Filter</span>
+        <div class="flex items-center gap-2">
+            <label class="text-xs text-zinc-500" for="filter-flag">Risk</label>
+            <select id="filter-flag" x-model="filterFlag"
+                    class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-brand-500">
+                <option value="all">All</option>
+                <option value="none">None</option>
+                <option value="warning">Warning</option>
+                <option value="restricted">Restricted</option>
+                <option value="blocked">Blocked</option>
+            </select>
+        </div>
+        <div class="flex items-center gap-2">
+            <label class="text-xs text-zinc-500" for="filter-source">Source</label>
+            <select id="filter-source" x-model="filterSource"
+                    class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-brand-500">
+                <option value="all">All</option>
+                <option value="github">GitHub</option>
+                <option value="usenet">Usenet</option>
+                <option value="torznab">Torrent</option>
+            </select>
+        </div>
+        <span class="text-xs font-medium text-zinc-500 uppercase tracking-wider ml-4">Sort</span>
+        <div class="flex items-center gap-2">
+            <select x-model="sortBy"
+                    class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-brand-500">
+                <option value="confidence">Confidence</option>
+                <option value="created_at">Age</option>
+            </select>
+            <button @click="sortDir = sortDir === 'desc' ? 'asc' : 'desc'"
+                    class="text-zinc-400 hover:text-zinc-200 text-xs px-2 py-1 rounded border border-zinc-700 bg-zinc-800"
+                    :title="sortDir === 'desc' ? 'Descending' : 'Ascending'">
+                <span x-text="sortDir === 'desc' ? 'Desc' : 'Asc'"></span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Staging queue (staged + under_review) -->
+    <div class="bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800">
+        <div class="px-5 py-3 bg-zinc-800/30 border-b border-zinc-800 flex items-center justify-between">
+            <h4 class="text-sm font-medium text-zinc-300">Staged / Under Review</h4>
+            {% if staging_releases %}
+            <a href="/quick-approve"
+               class="text-brand-400 hover:text-brand-300 text-xs font-medium">
+                Quick Approve Mode
+            </a>
+            {% endif %}
+        </div>
+        <table class="w-full">
+            <thead class="bg-zinc-800/50">
+                <tr>
+                    <th scope="col" class="w-10 px-3 py-3">
+                        <input type="checkbox"
+                               :checked="allSelected"
+                               @change="toggleAll()"
+                               class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                               aria-label="Select all staged releases">
+                    </th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Release</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Version</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">State</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Trust</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Flag</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider"
+                        data-tooltip="Match confidence: combined score from source trust and metadata quality.">Confidence</th>
+                    <th scope="col" class="w-48 px-5 py-3"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-800/50">
+                {% for release in staging_releases %}
+                <tr class="swipe-card hover:bg-zinc-800/30 transition-colors"
+                    data-id="{{ release.id }}"
+                    data-release-id="{{ release.id }}"
+                    x-show="filteredIds.includes('{{ release.id }}')">
+                    <td class="px-3 py-3.5">
+                        <input type="checkbox"
+                               :checked="selected.includes('{{ release.id }}')"
+                               @change="$event.target.checked ? selected.push('{{ release.id }}') : selected.splice(selected.indexOf('{{ release.id }}'), 1)"
+                               class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900"
+                               aria-label="Select {{ release.name }}">
+                    </td>
+                    <td class="px-5 py-3.5 text-sm font-medium">{{ release.name }}</td>
+                    <td class="px-5 py-3.5 text-sm text-zinc-400">{{ release.version }}</td>
+                    <td class="px-5 py-3.5">
+                        {% if release.workflow_state.value == 'staged' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-900/50 text-blue-300">Staged</span>
+                        {% elif release.workflow_state.value == 'under_review' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-900/50 text-purple-300">Under Review</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-5 py-3.5">
+                        {% if release.trust_status.value == 'developer_verified' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-900/50 text-green-300"
+                              data-tooltip="Developer Verified: publisher signature or hash matches known-good data.">Verified</span>
+                        {% elif release.trust_status.value == 'admin_verified' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-900/50 text-blue-300"
+                              data-tooltip="Admin Verified: manually approved by an administrator.">Admin</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-800 text-zinc-500"
+                              data-tooltip="Unverified: publisher signature and hash could not be confirmed.">Unverified</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-5 py-3.5">
+                        {% if release.flag_status.value == 'blocked' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-900/50 text-red-300"
+                              data-tooltip="Blocked: hash mismatch, invalid signature, or known-malicious detection.">Blocked</span>
+                        {% elif release.flag_status.value == 'restricted' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-orange-900/50 text-orange-300"
+                              data-tooltip="Restricted: multiple risk indicators detected. Manual review recommended.">Restricted</span>
+                        {% elif release.flag_status.value == 'warning' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-900/50 text-amber-300"
+                              data-tooltip="Warning: one or more risk indicators detected for this release.">Warning</span>
+                        {% else %}
+                        <span class="text-[10px] text-zinc-600">None</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-5 py-3.5 text-sm text-zinc-400">{{ '%.0f' | format(release.confidence_score * 100) }}%</td>
+                    <td class="px-5 py-3.5 text-right flex items-center gap-2 justify-end">
+                        <button hx-post="/api/v1/staging/approve/{{ release.id }}"
+                                hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'
+                                hx-swap="none"
+                                hx-on::after-request="location.reload()"
+                                class="bg-brand-600 hover:bg-brand-700 px-3 py-1 rounded text-xs font-medium transition-colors">
+                            Approve
+                        </button>
+                        <a href="/releases/{{ release.id }}"
+                           class="text-brand-400 hover:text-brand-300 text-xs font-medium">
+                            Review
+                        </a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="px-5 py-10 text-center text-sm text-zinc-500">
+                        No releases in staging. Stage discovered releases above or search for new ones.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

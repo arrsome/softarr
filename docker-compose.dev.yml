@@ -1,0 +1,12 @@
+# Development overrides: bind mount source, hot reload, debug mode.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+services:
+  app:
+    environment:
+      - DEBUG=true
+      - AUTO_CREATE_TABLES=true
+      - CORS_ALLOW_ALL=true
+    volumes:
+      - .:/app
+    command: uvicorn softarr.main:app --host 0.0.0.0 --port 8000 --reload

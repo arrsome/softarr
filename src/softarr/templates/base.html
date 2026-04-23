@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="{{ lang | default('en') }}" class="h-full text-zinc-100" style="background:#1a1a1a">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Softarr - {{ title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://unpkg.com/alpinejs@3.14.3/dist/cdn.min.js" defer></script>
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#1a1a1a">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="/static/js/tooltips.js" defer></script>
+    <script src="/static/js/swipe.js" defer></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe',
+                            300: '#93c5fd', 400: '#5aadff', 500: '#2196f3',
+                            600: '#1e90ff', 700: '#1a7de0', 800: '#1565c0',
+                            900: '#0d47a1',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html, body { background: #1a1a1a; }
+        aside { background: #161616; }
+        header { background: #1e1e1e; border-bottom: 1px solid #2a2a2a; }
+        main  { background: #1a1a1a; }
+
+        /* ACC-04: Skip to content link -- visible only on keyboard focus */
+        .skip-link {
+            position: absolute;
+            top: -100%;
+            left: 0.5rem;
+            z-index: 9999;
+            padding: 0.5rem 1rem;
+            background: #1e90ff;
+            color: #fff;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border-radius: 0 0 4px 4px;
+            text-decoration: none;
+        }
+        .skip-link:focus {
+            top: 0;
+        }
+
+        /* ACC-05: Visible focus outlines -- never hidden */
+        :focus-visible {
+            outline: 2px solid #1e90ff;
+            outline-offset: 2px;
+        }
+
+        /* ARR-style active nav -- left border indicator */
+        nav a.arr-active {
+            border-left-color: #1e90ff !important;
+            background: #252525;
+            color: #fff !important;
+        }
+
+        nav a.arr-nav-link:hover:not(.arr-active) {
+            background: #222;
+            color: #e5e5e5;
+        }
+
+        /* Compact table density to match ARR stack */
+        table tbody tr td {
+            padding-top: 0.4rem;
+            padding-bottom: 0.4rem;
+            font-size: 0.8125rem;
+        }
+
+        /* Subtle alternating rows */
+        table tbody tr:nth-child(even) {
+            background: rgba(255,255,255,0.02);
+        }
+
+        /* Input focus glow */
+        input:focus, select:focus, textarea:focus {
+            box-shadow: 0 0 0 1px rgba(30,144,255,0.3);
+        }
+    </style>
+    <script>
+        // Register service worker for PWA support
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('/service-worker.js').catch(function () {});
+            });
+        }
+    </script>
+</head>
+<body class="h-full" style="background:#1a1a1a">
+    <!-- ACC-04: Skip to main content -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <div class="flex h-screen overflow-hidden" x-data="{ sidebarOpen: false }">
+        <!-- Mobile overlay -->
+        <div x-show="sidebarOpen"
+             @click="sidebarOpen = false"
+             class="fixed inset-0 bg-black/60 z-40 lg:hidden"
+             aria-hidden="true"
+             x-cloak></div>
+
+        <!-- ACC-03: Sidebar uses <aside> (landmark) with aria-label -->
+        <aside class="flex flex-col shrink-0 fixed inset-y-0 left-0 z-50 transition-transform lg:relative lg:translate-x-0"
+               style="width:200px;border-right:1px solid #2a2a2a"
+               :class="{ '-translate-x-full': !sidebarOpen }"
+               aria-label="Application sidebar"
+               x-cloak>
+
+            <!-- Logo -->
+            <div class="flex items-center px-3 py-3" style="border-bottom:1px solid #2a2a2a;min-height:52px">
+                <a href="/" aria-label="Softarr home">
+                    <img src="/static/images/logo.svg" alt="Softarr" style="height:32px;width:auto">
+                </a>
+            </div>
+
+            <!-- ACC-03: <nav> landmark with aria-label -->
+            <nav class="flex-1 py-2 text-sm overflow-y-auto" aria-label="Main navigation">
+                <a href="/"
+                   class="arr-nav-link flex items-center gap-2.5 px-3 py-2 text-zinc-400 hover:text-white transition-colors {% if active_page == 'dashboard' %}arr-active{% endif %}"
+                   style="border-left:2px solid transparent"
+                   {% if active_page == 'dashboard' %}aria-current="page"{% endif %}>
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+                    Dashboard
+                </a>
+                <a href="/software"
+                   class="arr-nav-link flex items-center gap-2.5 px-3 py-2 text-zinc-400 hover:text-white transition-colors {% if active_page == 'software' %}arr-active{% endif %}"
+                   style="border-left:2px solid transparent"
+                   {% if active_page == 'software' %}aria-current="page"{% endif %}>
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                    Software Library
+                </a>
+                <a href="/releases/search"
+                   class="arr-nav-link flex items-center gap-2.5 px-3 py-2 text-zinc-400 hover:text-white transition-colors {% if active_page == 'search' %}arr-active{% endif %}"
+                   style="border-left:2px solid transparent"
+                   {% if active_page == 'search' %}aria-current="page"{% endif %}>
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    Release Search
+                </a>
+                <a href="/releases"
+                   class="arr-nav-link flex items-center gap-2.5 px-3 py-2 text-zinc-400 hover:text-white transition-colors {% if active_page == 'releases' %}arr-active{% endif %}"
+                   style="border-left:2px solid transparent"
+                   {% if active_page == 'releases' %}aria-current="page"{% endif %}>
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                    Releases
+                </a>
+                <a href="/staging-queue"
+                   class="arr-nav-link flex items-center gap-2.5 px-3 py-2 text-zinc-400 hover:text-white transition-colors {% if active_page == 'staging_queue' %}arr-active{% endif %}"
+                   style="border-left:2px solid transparent"
+                   {% if active_page == 'staging_queue' %}aria-current="page"{% endif %}>
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                    Staging Queue
+                </a>
+                <a href="/wanted"
+                   class="arr-nav-link flex items-center gap-2.5 px-3 py-2 text-zinc-400 hover:text-white transition-colors {% if active_page == 'wanted' %}arr-active{% endif %}"
+                   style="border-left:2px solid transparent"
+                   {% if active_page == 'wanted' %}aria-current="page"{% endif %}>
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    Wanted
+                </a>
+                <a href="/history"
+                   class="arr-nav-link flex items-center gap-2.5 px-3 py-2 text-zinc-400 hover:text-white transition-colors {% if active_page == 'history' %}arr-active{% endif %}"
+                   style="border-left:2px solid transparent"
+                   {% if active_page == 'history' %}aria-current="page"{% endif %}>
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    History
+                </a>
+                <a href="/settings"
+                   class="arr-nav-link flex items-center gap-2.5 px-3 py-2 text-zinc-400 hover:text-white transition-colors {% if active_page == 'settings' %}arr-active{% endif %}"
+                   style="border-left:2px solid transparent"
+                   {% if active_page == 'settings' %}aria-current="page"{% endif %}>
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    Settings
+                </a>
+                <a href="/system/health"
+                   class="arr-nav-link flex items-center gap-2.5 px-3 py-2 text-zinc-400 hover:text-white transition-colors {% if active_page == 'system_health' %}arr-active{% endif %}"
+                   style="border-left:2px solid transparent"
+                   {% if active_page == 'system_health' %}aria-current="page"{% endif %}>
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    System Health
+                </a>
+                {% if current_user and current_user.role == 'admin' %}
+                <a href="/settings/users"
+                   class="arr-nav-link flex items-center gap-2.5 px-3 py-2 text-zinc-400 hover:text-white transition-colors {% if active_page == 'users' %}arr-active{% endif %}"
+                   style="border-left:2px solid transparent"
+                   {% if active_page == 'users' %}aria-current="page"{% endif %}>
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                    Users
+                </a>
+                {% endif %}
+                <a href="/about"
+                   class="arr-nav-link flex items-center gap-2.5 px-3 py-2 text-zinc-400 hover:text-white transition-colors {% if active_page == 'about' %}arr-active{% endif %}"
+                   style="border-left:2px solid transparent"
+                   {% if active_page == 'about' %}aria-current="page"{% endif %}>
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    About
+                </a>
+            </nav>
+
+            <!-- Version -->
+            <div class="px-3 py-2.5" style="border-top:1px solid #2a2a2a;font-size:0.65rem;color:#555">
+                Softarr v{{ app_version }}
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col min-w-0 lg:ml-0" style="background:#1a1a1a">
+            <!-- ACC-03: <header> landmark -->
+            <header class="px-4 py-2.5 flex items-center gap-4 shrink-0" style="background:#1e1e1e;border-bottom:1px solid #2a2a2a;min-height:52px">
+                <!-- ACC-07: aria-label on icon-only button -->
+                <button @click="sidebarOpen = !sidebarOpen"
+                        class="lg:hidden p-1.5 rounded text-zinc-400 hover:text-white"
+                        aria-label="Toggle navigation sidebar"
+                        :aria-expanded="sidebarOpen">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+
+                <!-- ACC-06: labelled search input -->
+                <label for="global-search" class="sr-only">Search Softarr</label>
+                <input id="global-search"
+                       type="search"
+                       placeholder="Search..."
+                       class="hidden md:block text-sm focus:outline-none"
+                       style="background:#2b2b2b;border:1px solid #3a3a3a;border-radius:4px;padding:0.375rem 0.75rem;width:220px;color:#ccc"
+                       onfocus="this.style.borderColor='#1e90ff'" onblur="this.style.borderColor='#3a3a3a'">
+
+                <!-- Page title (h1 -- the only h1 on the page per ACC-03) -->
+                <h1 class="text-base font-semibold text-zinc-200 flex-1">{{ title }}</h1>
+
+                <!-- Right-side user info -->
+                <div class="flex items-center gap-4 text-xs" style="color:#888">
+                    {% if current_user %}
+                    <span class="text-zinc-300">
+                        {{ current_user.u }}
+                        {% if current_user.role and current_user.role != 'admin' %}
+                        <span style="color:#777;font-size:0.6rem;margin-left:2px" aria-label="Role: viewer">(viewer)</span>
+                        {% endif %}
+                    </span>
+                    <a href="/change-password" class="hover:text-zinc-200 transition-colors" style="color:#666">Change Password</a>
+                    <form action="/auth/logout" method="POST" class="inline">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="hover:text-zinc-200 transition-colors" style="color:#666">Logout</button>
+                    </form>
+                    {% endif %}
+                    <!-- ACC-10: status uses text not colour alone -->
+                    <span id="db-status" class="flex items-center gap-1.5" style="color:#888" aria-live="polite" aria-label="Database status: connected">
+                        <span class="w-1.5 h-1.5 rounded-full" style="background:#1e90ff" aria-hidden="true"></span>
+                        Connected
+                    </span>
+                </div>
+            </header>
+
+            <!-- ACC-03: <main> landmark with id for skip link target -->
+            <main id="main-content" class="flex-1 overflow-auto p-6" tabindex="-1">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+    <script src="/static/js/app.js?v={{ app_version }}"></script>
+    <script>
+        // Configure HTMX to send CSRF token with every request
+        document.addEventListener('DOMContentLoaded', function() {
+            var token = document.querySelector('meta[name="csrf-token"]');
+            if (token) {
+                document.body.setAttribute('hx-headers',
+                    JSON.stringify({"X-CSRF-Token": token.content}));
+            }
+        });
+    </script>
+</body>
+</html>

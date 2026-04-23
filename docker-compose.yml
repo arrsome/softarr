@@ -1,0 +1,49 @@
+services:
+  app:
+    build: .
+    image: arrsomedev/softarr:latest
+    # Runs as uid/gid 1000 by default, which matches the baked `softarr`
+    # user in the image. To run as your host user (required for bind mounts
+    # when your host uid is not 1000), export UID and GID before running
+    # compose, e.g.:
+    #
+    #     export UID=$(id -u) GID=$(id -g)
+    #     sudo chown -R "$UID:$GID" ./data   # if using a bind mount
+    #     docker compose up -d
+    #
+    # Or set UID= / GID= in a .env file alongside this compose file.
+    # See docs/configuration.md "Running as a non-root user".
+    user: "${UID:-1000}:${GID:-1000}"
+    ports:
+      - "8000:8000"
+    environment:
+      # SQLite database lives on the softarr_data volume alongside softarr.ini.
+      # Note the four slashes: sqlite+aiosqlite:// + /data/softarr.db (absolute path).
+      - DATABASE_URL=${DATABASE_URL:-sqlite+aiosqlite:////data/softarr.db}
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+      - DEBUG=${DEBUG:-false}
+      # Auto-create tables on startup -- no Alembic required for first boot.
+      # Set to false and run `alembic upgrade head` manually for stricter setups.
+      - AUTO_CREATE_TABLES=${AUTO_CREATE_TABLES:-true}
+      - CORS_ALLOW_ALL=${CORS_ALLOW_ALL:-false}
+      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:8000"]}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
+      # "text" (human-readable) or "json" (structured for Loki/Datadog/ELK)
+      - LOG_FORMAT=${LOG_FORMAT:-text}
+    volumes:
+      # Persists softarr.ini and the SQLite database across restarts.
+      # Swap for a bind mount (e.g. ./data:/data) if you prefer -- see the
+      # `user:` note above for the uid/ownership requirements.
+      - softarr_data:/data
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  softarr_data:

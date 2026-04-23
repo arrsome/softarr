@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-6" x-data="releasesPage()">
+    <div class="flex items-center justify-between">
+        <p class="text-sm text-zinc-400">All discovered and processed releases with trust and safety ratings.</p>
+        <a href="/releases/search" class="bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            Search for Releases
+        </a>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            <select x-model="filters.software_id" @change="resetAndFetch()"
+                    class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-brand-500">
+                <option value="">All Software</option>
+                {% for sw in softwares %}
+                <option value="{{ sw.id }}">{{ sw.canonical_name }}</option>
+                {% endfor %}
+            </select>
+            <select x-model="filters.trust_status" @change="resetAndFetch()"
+                    class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-brand-500">
+                <option value="">All Trust</option>
+                <option value="unverified">Unverified</option>
+                <option value="developer_verified">Developer Verified</option>
+                <option value="admin_verified">Admin Verified</option>
+            </select>
+            <select x-model="filters.flag_status" @change="resetAndFetch()"
+                    class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-brand-500">
+                <option value="">All Flags</option>
+                <option value="none">None</option>
+                <option value="warning">Warning</option>
+                <option value="restricted">Restricted</option>
+                <option value="blocked">Blocked</option>
+            </select>
+            <select x-model="filters.source_type" @change="resetAndFetch()"
+                    class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-brand-500">
+                <option value="">All Sources</option>
+                <option value="github">GitHub</option>
+                <option value="usenet">Usenet</option>
+                <option value="vendor">Vendor</option>
+            </select>
+            <select x-model="filters.workflow_state" @change="resetAndFetch()"
+                    class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-brand-500">
+                <option value="">All States</option>
+                <option value="discovered">Discovered</option>
+                <option value="staged">Staged</option>
+                <option value="under_review">Under Review</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="queued_for_download">Queued</option>
+                <option value="downloaded">Downloaded</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Bulk Action Bar -->
+    <div x-show="selected.length > 0" x-transition
+         class="bg-zinc-800 rounded-xl px-4 py-3 border border-zinc-700 flex items-center gap-4">
+        <span class="text-sm text-zinc-300" x-text="selected.length + ' selected'"></span>
+        <button @click="bulkAction('approve')"
+                class="bg-green-700 hover:bg-green-600 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors">
+            Approve All
+        </button>
+        <button @click="bulkAction('reject')"
+                class="bg-red-800 hover:bg-red-700 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors">
+            Reject All
+        </button>
+        <button @click="bulkAction('delete')"
+                class="bg-zinc-700 hover:bg-zinc-600 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors">
+            Delete All
+        </button>
+        <button @click="selected = []" class="text-xs text-zinc-500 hover:text-zinc-300 ml-auto">Clear selection</button>
+    </div>
+
+    <!-- Release Table -->
+    <div class="bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800">
+        <table class="w-full">
+            <thead class="bg-zinc-800/50">
+                <tr>
+                    <th scope="col" class="px-4 py-3 w-8">
+                        <input type="checkbox" @change="toggleAll($event)"
+                               class="rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900">
+                    </th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Software</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Version</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Trust</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Flag</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Source</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">State</th>
+                    <th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Added</th>
+                    <th scope="col" class="w-48 px-5 py-3"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-800/50" id="releases-tbody">
+                <tr>
+                    <td colspan="9" class="px-5 py-12 text-center text-sm text-zinc-500">Loading...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="flex items-center justify-between" x-show="pagination.total_pages > 1">
+        <p class="text-sm text-zinc-500">
+            Showing page <span x-text="pagination.page"></span> of <span x-text="pagination.total_pages"></span>
+            (<span x-text="pagination.total"></span> total)
+        </p>
+        <div class="flex gap-2">
+            <button @click="goPage(pagination.page - 1)"
+                    :disabled="pagination.page <= 1"
+                    class="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm transition-colors">
+                Previous
+            </button>
+            <button @click="goPage(pagination.page + 1)"
+                    :disabled="pagination.page >= pagination.total_pages"
+                    class="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm transition-colors">
+                Next
+            </button>
+        </div>
+    </div>
+
+    <!-- SABnzbd Download Progress Panel -->
+    <div id="progress-panel" class="hidden bg-zinc-900 rounded-xl p-5 border border-zinc-800 space-y-3">
+        <div class="flex items-center justify-between">
+            <h3 class="text-sm font-medium text-zinc-300">Download Queue</h3>
+            <button onclick="stopPolling()" class="text-xs text-zinc-500 hover:text-zinc-300">Dismiss</button>
+        </div>
+        <div id="progress-items" class="space-y-3"></div>
+    </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="hidden fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg text-sm font-medium shadow-lg transition-all"></div>
+
+<script>
+var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+function releasesPage() {
+    return {
+        filters: {
+            software_id: '',
+            trust_status: '',
+            flag_status: '',
+            source_type: '',
+            workflow_state: '',
+        },
+        pagination: {page: 1, page_size: 50, total: 0, total_pages: 0},
+        selected: [],
+
+        init() {
+            this.fetchReleases();
+        },
+
+        resetAndFetch() {
+            this.pagination.page = 1;
+            this.selected = [];
+            this.fetchReleases();
+        },
+
+        goPage(n) {
+            if (n < 1 || n > this.pagination.total_pages) return;
+            this.pagination.page = n;
+            this.selected = [];
+            this.fetchReleases();
+        },
+
+        buildQuery() {
+            var params = new URLSearchParams();
+            params.set('page', this.pagination.page);
+            params.set('page_size', this.pagination.page_size);
+            if (this.filters.software_id) params.set('software_id', this.filters.software_id);
+            if (this.filters.trust_status) params.set('trust_status', this.filters.trust_status);
+            if (this.filters.flag_status) params.set('flag_status', this.filters.flag_status);
+            if (this.filters.source_type) params.set('source_type', this.filters.source_type);
+            if (this.filters.workflow_state) params.set('workflow_state', this.filters.workflow_state);
+            return params.toString();
+        },
+
+        async fetchReleases() {
+            var tbody = document.getElementById('releases-tbody');
+            tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-12 text-center text-sm text-zinc-500">Loading...</td></tr>';
+            try {
+                var resp = await fetch('/api/v1/releases/all?' + this.buildQuery());
+                if (!resp.ok) throw new Error('Failed to load releases');
+                var data = await resp.json();
+                this.pagination.total = data.total;
+                this.pagination.total_pages = data.total_pages;
+                this.pagination.page = data.page;
+                this.renderRows(data.items);
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-12 text-center text-sm text-red-400">' + escapeHtml(e.message) + '</td></tr>';
+            }
+        },
+
+        renderRows(items) {
+            var tbody = document.getElementById('releases-tbody');
+            if (!items || items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-12 text-center text-sm text-zinc-500">No releases match the current filters. <a href="/releases/search" class="text-brand-400 hover:text-brand-300">Search for releases</a> to populate this list.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = items.map(r => this.rowHtml(r)).join('');
+        },
+
+        rowHtml(r) {
+            var fs = r.flag_status, ts = r.trust_status, ws = r.workflow_state;
+            var trustBadge = '';
+            if (fs === 'blocked' || fs === 'restricted') {
+                trustBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-900/50 text-red-300">Dangerous</span>';
+            } else if (fs === 'warning') {
+                trustBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-900/50 text-amber-300">Warning</span>';
+            } else if (ts === 'developer_verified' || ts === 'admin_verified') {
+                trustBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-900/50 text-green-300">Safe</span>';
+            } else {
+                trustBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-800 text-zinc-500">Unverified</span>';
+            }
+            var flagBadge = '';
+            if (fs === 'blocked') {
+                flagBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-900/50 text-red-300">Blocked</span>';
+            } else if (fs === 'restricted') {
+                flagBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-orange-900/50 text-orange-300">Restricted</span>';
+            } else if (fs === 'warning') {
+                flagBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-900/50 text-amber-300">Warning</span>';
+            } else {
+                flagBadge = '<span class="text-[10px] text-zinc-600">None</span>';
+            }
+            var wsBadge = {
+                discovered: '<span class="text-[10px] text-zinc-400">Discovered</span>',
+                staged: '<span class="text-[10px] text-blue-400">Staged</span>',
+                under_review: '<span class="text-[10px] text-purple-400">Under Review</span>',
+                approved: '<span class="text-[10px] text-green-400">Approved</span>',
+                rejected: '<span class="text-[10px] text-red-400">Rejected</span>',
+                queued_for_download: '<span class="text-[10px] text-cyan-400">Queued</span>',
+                downloaded: '<span class="text-[10px] text-brand-400">Downloaded</span>',
+            }[ws] || '<span class="text-[10px] text-zinc-500">' + escapeHtml(ws) + '</span>';
+            var actionCell = '';
+            if (ws !== 'queued_for_download' && ws !== 'downloaded') {
+                actionCell += '<button onclick="downloadRelease(\'' + r.id + '\', \'' + r.software_id + '\')" id="dl-btn-' + r.id + '" class="bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded text-xs font-medium transition-colors">Download</button>';
+            } else {
+                actionCell += '<span class="text-xs text-zinc-500">' + (ws === 'downloaded' ? 'Downloaded' : 'Queued') + '</span>';
+            }
+            actionCell += ' <a href="/releases/' + r.id + '" class="text-zinc-400 hover:text-zinc-200 text-xs">Details</a>';
+            actionCell += ' <button onclick="removeRelease(\'' + r.id + '\')" class="text-zinc-600 hover:text-red-400 text-xs transition-colors" title="Remove">Remove</button>';
+            var softwareName = r.software_name || r.name;
+            return '<tr class="hover:bg-zinc-800/30 transition-colors" id="rel-row-' + r.id + '">' +
+                '<td class="px-4 py-3.5"><input type="checkbox" value="' + r.id + '" class="rel-checkbox rounded border-zinc-600 bg-zinc-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-zinc-900" @change="toggleOne($event)"></td>' +
+                '<td class="px-5 py-3.5 text-sm font-medium">' + escapeHtml(softwareName) + '<span class="text-xs text-zinc-500 font-normal ml-1 truncate block max-w-xs">' + escapeHtml(r.name) + '</span></td>' +
+                '<td class="px-5 py-3.5 text-sm text-zinc-400 font-mono">' + escapeHtml(r.version) + '</td>' +
+                '<td class="px-5 py-3.5">' + trustBadge + '</td>' +
+                '<td class="px-5 py-3.5">' + flagBadge + '</td>' +
+                '<td class="px-5 py-3.5 text-sm text-zinc-400">' + escapeHtml(r.source_type) + '</td>' +
+                '<td class="px-5 py-3.5">' + wsBadge + '</td>' +
+                '<td class="px-5 py-3.5 text-xs text-zinc-500">' + (r.created_at ? r.created_at.substring(0, 10) : '--') + '</td>' +
+                '<td class="px-5 py-3.5 text-right"><div class="flex items-center justify-end gap-2">' + actionCell + '</div><div id="rel-status-' + r.id + '" class="text-xs mt-1 text-right"></div></td>' +
+                '</tr>';
+        },
+
+        toggleAll(event) {
+            var checkboxes = document.querySelectorAll('.rel-checkbox');
+            if (event.target.checked) {
+                this.selected = Array.from(checkboxes).map(c => c.value);
+                checkboxes.forEach(c => { c.checked = true; });
+            } else {
+                this.selected = [];
+                checkboxes.forEach(c => { c.checked = false; });
+            }
+        },
+
+        toggleOne(event) {
+            var id = event.target.value;
+            if (event.target.checked) {
+                if (!this.selected.includes(id)) this.selected.push(id);
+            } else {
+                this.selected = this.selected.filter(x => x !== id);
+            }
+        },
+
+        async bulkAction(action) {
+            if (this.selected.length === 0) return;
+            var label = {approve: 'approve', reject: 'reject', delete: 'permanently delete'}[action];
+            if (!confirm('Are you sure you want to ' + label + ' ' + this.selected.length + ' release(s)?')) return;
+            try {
+                var resp = await fetch('/api/v1/releases/bulk-action', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+                    body: JSON.stringify({action: action, release_ids: this.selected}),
+                });
+                var data = await resp.json();
+                if (resp.ok) {
+                    showToast('Done: ' + data.succeeded.length + ' succeeded, ' + data.failed.length + ' failed.', data.failed.length > 0 ? 'error' : 'success');
+                    this.selected = [];
+                    this.fetchReleases();
+                } else {
+                    showToast(data.detail || 'Bulk action failed', 'error');
+                }
+            } catch (e) {
+                showToast('Error: ' + e.message, 'error');
+            }
+        },
+    };
+}
+
+// -------------------------------------------------------------------------
+// Download: fast-path through workflow then send to SABnzbd
+// -------------------------------------------------------------------------
+function downloadRelease(releaseId, softwareId) {
+    var btn = document.getElementById('dl-btn-' + releaseId);
+    var statusEl = document.getElementById('rel-status-' + releaseId);
+    if (btn) { btn.disabled = true; btn.textContent = 'Processing...'; }
+
+    // First try to send directly (release may already be APPROVED)
+    trySend(releaseId)
+        .catch(function() {
+            // Not yet approved -- transition through states
+            return transitionRelease(releaseId, 'staged')
+                .then(function() { return transitionRelease(releaseId, 'under_review'); })
+                .then(function() { return approveRelease(releaseId); })
+                .then(function() { return trySend(releaseId); });
+        })
+        .then(function() {
+            if (btn) {
+                btn.textContent = 'Queued';
+                btn.classList.remove('bg-brand-600', 'hover:bg-brand-700');
+                btn.classList.add('bg-zinc-700', 'cursor-default');
+            }
+            if (statusEl) statusEl.innerHTML = '<span class="text-green-400">Queued in SABnzbd</span>';
+            showToast('Queued in SABnzbd.', 'success');
+            startPolling();
+        })
+        .catch(function(err) {
+            if (btn) { btn.disabled = false; btn.textContent = 'Download'; }
+            if (statusEl) statusEl.innerHTML = '<span class="text-red-400">' + escapeHtml(err.message) + '</span>';
+            showToast(err.message, 'error');
+        });
+}
+
+function trySend(releaseId) {
+    return fetch('/api/v1/actions/sabnzbd/send', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({release_id: releaseId, download_url: null}),
+    }).then(function(resp) {
+        if (!resp.ok) return resp.json().then(function(d) { throw new Error(d.detail || 'SABnzbd send failed'); });
+        return resp.json();
+    });
+}
+
+function transitionRelease(releaseId, targetState) {
+    return fetch('/api/v1/staging/transition/' + encodeURIComponent(releaseId), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({target_state: targetState}),
+    }).then(function(resp) {
+        if (!resp.ok) return resp.json().then(function(d) { throw new Error(d.detail || 'Transition failed'); });
+        return resp.json();
+    });
+}
+
+function approveRelease(releaseId) {
+    return fetch('/api/v1/staging/approve/' + encodeURIComponent(releaseId), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+    }).then(function(resp) {
+        if (!resp.ok) return resp.json().then(function(d) { throw new Error(d.detail || 'Approval failed'); });
+        return resp.json();
+    });
+}
+
+// -------------------------------------------------------------------------
+// Remove release
+// -------------------------------------------------------------------------
+function removeRelease(releaseId) {
+    if (!confirm('Remove this release from the monitor?')) return;
+    fetch('/api/v1/releases/' + encodeURIComponent(releaseId), {
+        method: 'DELETE',
+        headers: {'X-CSRF-Token': csrfToken},
+    }).then(function(resp) {
+        if (resp.ok || resp.status === 204) {
+            var row = document.getElementById('rel-row-' + releaseId);
+            if (row) row.remove();
+        } else {
+            resp.json().then(function(d) { showToast(d.detail || 'Remove failed', 'error'); });
+        }
+    });
+}
+
+// -------------------------------------------------------------------------
+// SABnzbd progress polling
+// -------------------------------------------------------------------------
+var _pollInterval = null;
+
+function startPolling() {
+    document.getElementById('progress-panel').classList.remove('hidden');
+    if (_pollInterval) return;
+    pollQueue();
+    _pollInterval = setInterval(pollQueue, 5000);
+}
+
+function stopPolling() {
+    if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
+    document.getElementById('progress-panel').classList.add('hidden');
+    document.getElementById('progress-items').innerHTML = '';
+}
+
+function pollQueue() {
+    fetch('/api/v1/actions/sabnzbd/queue')
+        .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+        .then(function(data) {
+            var items = data.queue || [];
+            var container = document.getElementById('progress-items');
+            if (items.length === 0) {
+                container.innerHTML = '<p class="text-sm text-zinc-500">Queue is empty -- all downloads complete.</p>';
+                setTimeout(stopPolling, 4000);
+                return;
+            }
+            var html = '';
+            items.forEach(function(item) {
+                var pct = item.percentage || 0;
+                html += '<div class="space-y-1">';
+                html += '<div class="flex justify-between text-xs text-zinc-400">';
+                html += '<span class="truncate max-w-xs">' + escapeHtml(item.filename) + '</span>';
+                html += '<span class="ml-4 shrink-0">' + pct + '% &bull; ' + escapeHtml(item.mb_left + ' MB left') + '</span>';
+                html += '</div>';
+                html += '<div class="w-full bg-zinc-700 rounded-full h-1.5">';
+                html += '<div class="bg-brand-500 h-1.5 rounded-full transition-all" style="width:' + pct + '%"></div>';
+                html += '</div>';
+                if (item.timeleft) {
+                    html += '<div class="text-xs text-zinc-500">' + escapeHtml(item.status) + ' &bull; ETA ' + escapeHtml(item.timeleft) + '</div>';
+                }
+                html += '</div>';
+            });
+            container.innerHTML = html;
+        })
+        .catch(function() {});
+}
+
+// -------------------------------------------------------------------------
+// Utilities
+// -------------------------------------------------------------------------
+function showToast(message, type) {
+    var toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className = 'fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg text-sm font-medium shadow-lg ' +
+        (type === 'error' ? 'bg-red-900/80 text-red-200 border border-red-700' : 'bg-green-900/80 text-green-200 border border-green-700');
+    toast.classList.remove('hidden');
+    setTimeout(function() { toast.classList.add('hidden'); }, 4000);
+}
+
+function escapeHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+</script>
+{% endblock %}

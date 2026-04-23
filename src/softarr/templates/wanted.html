@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6" x-data="wantedPage()">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+        <p class="text-sm text-zinc-400">Monitored software with no successfully downloaded release.</p>
+        <div class="flex items-center gap-2">
+            <button @click="searchAll()" :disabled="searching"
+                    class="bg-brand-700 hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm transition-colors text-white">
+                <span x-show="!searching">Search All Wanted</span>
+                <span x-show="searching">Searching...</span>
+            </button>
+            <button @click="fetchWanted()"
+                    class="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-lg text-sm transition-colors">
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- SSE progress log -->
+    <template x-if="searchLog.length > 0">
+        <div class="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+            <h3 class="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Search Progress</h3>
+            <div class="space-y-1.5 font-mono text-xs max-h-60 overflow-y-auto">
+                <template x-for="(entry, idx) in searchLog" :key="idx">
+                    <div class="flex items-center gap-3">
+                        <span :class="entry.status === 'ok' ? 'text-brand-400' : 'text-red-400'" x-text="entry.status === 'ok' ? 'OK' : 'ERR'"></span>
+                        <span class="text-zinc-300" x-text="entry.software"></span>
+                        <span class="text-zinc-500" x-show="entry.status === 'ok'" x-text="'found: ' + entry.found + ', new: ' + entry.new"></span>
+                        <span class="text-red-400" x-show="entry.status !== 'ok'" x-text="entry.error || ''"></span>
+                    </div>
+                </template>
+                <div x-show="searchDone" class="text-zinc-500 mt-2">Done.</div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Loading state -->
+    <template x-if="loading">
+        <div class="text-zinc-500 text-sm text-center py-10">Loading...</div>
+    </template>
+
+    <!-- Empty state -->
+    <template x-if="!loading && items.length === 0">
+        <div class="bg-zinc-900 rounded-xl p-12 border border-zinc-800 text-center">
+            <div class="text-zinc-500 text-sm">No wanted software. All monitored entries have a downloaded release.</div>
+        </div>
+    </template>
+
+    <!-- Results table -->
+    <template x-if="!loading && items.length > 0">
+        <div class="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+            <table class="w-full text-sm">
+                <thead class="border-b border-zinc-800 bg-zinc-800/40">
+                    <tr>
+                        <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">Software</th>
+                        <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">Publisher</th>
+                        <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">OS</th>
+                        <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">Tags</th>
+                        <th scope="col" class="text-left px-4 py-3 font-medium text-zinc-400">Last Searched</th>
+                        <th scope="col" class="text-right px-4 py-3 font-medium text-zinc-400">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-800">
+                    <template x-for="item in items" :key="item.id">
+                        <tr class="hover:bg-zinc-800/30 transition-colors">
+                            <td class="px-4 py-3 font-medium text-zinc-100" x-text="item.canonical_name"></td>
+                            <td class="px-4 py-3 text-zinc-400" x-text="item.expected_publisher || '--'"></td>
+                            <td class="px-4 py-3 text-zinc-400" x-text="item.target_os || '--'"></td>
+                            <td class="px-4 py-3">
+                                <div class="flex flex-wrap gap-1">
+                                    <template x-for="tag in (item.tags || [])" :key="tag">
+                                        <span class="px-1.5 py-0.5 rounded text-[10px] bg-zinc-700 text-zinc-300" x-text="tag"></span>
+                                    </template>
+                                    <span x-show="!item.tags || item.tags.length === 0" class="text-zinc-600 text-xs">--</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-zinc-500 text-xs">
+                                <span x-text="item.last_searched_at ? new Date(item.last_searched_at).toLocaleString() : 'Never'"></span>
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <a :href="'/releases/search?software_id=' + item.id"
+                                   class="text-brand-400 hover:text-brand-300 text-xs transition-colors">
+                                    Search Releases
+                                </a>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </template>
+</div>
+
+<script>
+function wantedPage() {
+    return {
+        items: [],
+        loading: true,
+        searching: false,
+        searchLog: [],
+        searchDone: false,
+        async searchAll() {
+            this.searching = true;
+            this.searchLog = [];
+            this.searchDone = false;
+            try {
+                const es = new EventSource('/api/v1/software/wanted/search-all');
+                es.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.done) {
+                        this.searchDone = true;
+                        this.searching = false;
+                        es.close();
+                        this.fetchWanted();
+                    } else {
+                        this.searchLog.push(data);
+                    }
+                };
+                es.onerror = () => {
+                    this.searching = false;
+                    es.close();
+                };
+            } catch (e) {
+                this.searching = false;
+                console.error('Search all failed', e);
+            }
+        },
+        async fetchWanted() {
+            this.loading = true;
+            try {
+                const r = await fetch('/api/v1/software/wanted');
+                if (r.ok) {
+                    this.items = await r.json();
+                }
+            } catch (e) {
+                console.error('Failed to fetch wanted list', e);
+            } finally {
+                this.loading = false;
+            }
+        },
+        init() {
+            this.fetchWanted();
+        }
+    };
+}
+</script>
+{% endblock %}

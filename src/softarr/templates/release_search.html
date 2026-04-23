@@ -1,0 +1,669 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6" x-data="{ results: [], searching: false, selectedSoftware: '{{ software_id or '' }}' }">
+    <p class="text-sm text-zinc-400">Search configured sources for software releases. Enable adapters in Settings to add more sources.</p>
+
+    <!-- Search Controls -->
+    <div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Software Entry</label>
+                <select id="search-software-id" x-model="selectedSoftware"
+                        class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+                    <option value="">Select software...</option>
+                    {% for sw in softwares %}
+                    <option value="{{ sw.id }}" {% if sw.id | string == software_id %}selected{% endif %}>
+                        {{ sw.canonical_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1">Source</label>
+                <select id="search-source-type"
+                        class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+                    {% if usenet_enabled %}
+                    <option value="usenet">Usenet / NZB</option>
+                    {% endif %}
+                    {% if torrent_enabled %}
+                    <option value="torznab">Torrent</option>
+                    {% endif %}
+                    {% if not usenet_enabled and not torrent_enabled %}
+                    <option value="" disabled>No sources configured -- enable adapters in Settings</option>
+                    {% endif %}
+                </select>
+            </div>
+        </div>
+        <!-- Advanced search options (search mode + filter query) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-zinc-800"
+             x-data="{ searchMode: '{{ default_search_mode | default('standard') }}' }">
+            <div>
+                <label class="block text-xs text-zinc-500 mb-1"
+                       data-tooltip="Standard: adapter default ranking. Regex: regular expression match. Fuzzy: typo-tolerant. Exact: whole-word substring. Boolean: AND/OR/NOT operators.">
+                    Search Mode
+                </label>
+                <select id="search-mode-select"
+                        x-model="searchMode"
+                        class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+                    <option value="standard" {% if default_search_mode == 'standard' %}selected{% endif %}>Standard</option>
+                    <option value="fuzzy" {% if default_search_mode == 'fuzzy' %}selected{% endif %}>Fuzzy (typo-tolerant)</option>
+                    <option value="exact" {% if default_search_mode == 'exact' %}selected{% endif %}>Exact match</option>
+                    <option value="boolean" {% if default_search_mode == 'boolean' %}selected{% endif %}>Boolean (AND / OR / NOT)</option>
+                    <option value="regex" {% if default_search_mode == 'regex' %}selected{% endif %}>Regex</option>
+                </select>
+            </div>
+            <div x-show="searchMode !== 'standard'" x-transition>
+                <label class="block text-xs text-zinc-500 mb-1">Filter Query</label>
+                <input type="text" id="search-filter-query"
+                       placeholder="e.g. portable AND windows"
+                       class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+                <p class="text-[10px] text-zinc-600 mt-1"
+                   x-text="searchMode === 'boolean' ? 'Use AND, OR, NOT to combine terms.' : (searchMode === 'regex' ? 'Regular expression applied to release names.' : (searchMode === 'fuzzy' ? 'Typo-tolerant match against release names.' : 'Exact substring match (case-insensitive).'))"></p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3 mt-4">
+            <button id="search-btn" onclick="doSearch()"
+                    class="bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                Search Releases
+            </button>
+            <label class="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+                <input type="checkbox" id="group-toggle" class="rounded border-zinc-600 bg-zinc-800 text-brand-500">
+                Group by source
+            </label>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="search-spinner" class="htmx-indicator text-center py-8">
+        <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-zinc-600 border-t-brand-400"></div>
+        <p class="text-sm text-zinc-500 mt-2">Searching...</p>
+    </div>
+
+    <!-- Toast notification -->
+    <div id="toast" class="hidden fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg text-sm font-medium shadow-lg transition-all"></div>
+
+    <!-- Results -->
+    <div id="search-results" class="space-y-3">
+        <!-- Results will be loaded here via HTMX -->
+    </div>
+
+    <!-- SABnzbd Download Progress Panel -->
+    <div id="progress-panel" class="hidden bg-zinc-900 rounded-xl p-5 border border-zinc-800 space-y-3">
+        <div class="flex items-center justify-between">
+            <h3 class="text-sm font-medium text-zinc-300">Download Queue</h3>
+            <button onclick="stopPolling()" class="text-xs text-zinc-500 hover:text-zinc-300">Dismiss</button>
+        </div>
+        <div id="progress-items" class="space-y-3"></div>
+    </div>
+</div>
+
+<script>
+// -------------------------------------------------------------------------
+// Search result store -- avoids embedding JSON in onclick attributes,
+// which breaks when NZB/download URLs contain quotes, ampersands, etc.
+// -------------------------------------------------------------------------
+window._searchResults = [];
+
+// -------------------------------------------------------------------------
+// Search result rendering
+// -------------------------------------------------------------------------
+// Build a results table HTML string from a list of result objects.
+// resultStore is the array (window._searchResults or window._pirateResults)
+// used for index-based onclick references.
+function buildResultsTable(results, resultStore, softwareId, isUsenet, flagged) {
+    const safeSwId = escapeAttr(softwareId);
+    const storeRef = flagged ? 'window._pirateResults' : 'window._searchResults';
+    let html = '<div class="' + (flagged
+        ? 'bg-zinc-900 rounded-xl overflow-hidden border border-red-900/60'
+        : 'bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800') + '">' +
+        '<table class="w-full"><thead class="' + (flagged ? 'bg-red-950/40' : 'bg-zinc-800/50') + '"><tr>';
+    html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium ' + (flagged ? 'text-red-400' : 'text-zinc-400') + ' uppercase">Name</th>';
+    html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium ' + (flagged ? 'text-red-400' : 'text-zinc-400') + ' uppercase">Version</th>';
+    html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium ' + (flagged ? 'text-red-400' : 'text-zinc-400') + ' uppercase">Publisher</th>';
+    if (!isUsenet) {
+        html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium ' + (flagged ? 'text-red-400' : 'text-zinc-400') + ' uppercase">Source</th>';
+    }
+    if (isUsenet) {
+        html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium ' + (flagged ? 'text-red-400' : 'text-zinc-400') + ' uppercase">Size</th>';
+        html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium ' + (flagged ? 'text-red-400' : 'text-zinc-400') + ' uppercase">Grabs</th>';
+        html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium ' + (flagged ? 'text-red-400' : 'text-zinc-400') + ' uppercase">Age</th>';
+    }
+    html += '<th scope="col" class="w-48 px-5 py-3"></th>';
+    html += '</tr></thead><tbody class="divide-y ' + (flagged ? 'divide-red-900/30' : 'divide-zinc-800/50') + '">';
+
+    results.forEach(function(r, idx) {
+        const displayName = escapeHtml(r.display_name || r.name || '--');
+        const fullName = escapeHtml(r.name || '');
+        let nameInner = (r.display_name && r.display_name !== r.name)
+            ? '<span title="' + fullName + '">' + displayName + '</span>'
+            : '<span>' + displayName + '</span>';
+
+        // Piracy warning label
+        if (flagged && r._piracy_hits && r._piracy_hits.length) {
+            nameInner += '<br><span class="text-[10px] font-semibold text-red-400">Likely illegal -- ' +
+                escapeHtml(r._piracy_hits.join(', ')) + '</span>';
+        }
+
+        // Match score badge
+        const rd = r.raw_data || {};
+        const score = parseFloat(rd.match_score);
+        if (!isNaN(score)) {
+            nameInner += '<br><span class="text-[10px] font-normal ' +
+                (score >= 0.8 ? 'text-green-500' : score >= 0.5 ? 'text-amber-500' : 'text-red-500') +
+                '">' +
+                (score >= 0.8 ? 'Strong match' : score >= 0.5 ? 'Partial match' : 'Weak match') +
+                '</span>';
+        }
+
+        // Poster / group sub-line (Usenet-specific, indexer-dependent)
+        if (isUsenet && (rd.poster || rd.group)) {
+            const lineParts = [];
+            if (rd.poster) lineParts.push('Posted by ' + escapeHtml(rd.poster));
+            if (rd.group) lineParts.push(escapeHtml(rd.group));
+            nameInner += '<br><span class="text-[10px] text-zinc-600 font-normal">' + lineParts.join(' &bull; ') + '</span>';
+        }
+
+        const rowClass = flagged
+            ? 'hover:bg-red-950/20 transition-colors'
+            : 'hover:bg-zinc-800/30 transition-colors';
+        const nameClass = flagged
+            ? 'px-5 py-3 text-sm font-medium max-w-xs text-red-300'
+            : 'px-5 py-3 text-sm font-medium max-w-xs';
+        const cellClass = flagged
+            ? 'px-5 py-3 text-sm text-red-400/70'
+            : 'px-5 py-3 text-sm text-zinc-400';
+
+        html += '<tr class="' + rowClass + '">';
+        html += '<td class="' + nameClass + '">' + nameInner + '</td>';
+        html += '<td class="' + cellClass + ' font-mono">' + escapeHtml(r.version || '--') + '</td>';
+        html += '<td class="' + cellClass + '">' + escapeHtml(r.publisher || '--') + '</td>';
+        if (!isUsenet) {
+            html += '<td class="' + cellClass + '">' + escapeHtml(r.source_type || '--') + '</td>';
+        }
+        if (isUsenet) {
+            html += '<td class="' + cellClass + ' font-mono">' + formatSize(rd.size) + '</td>';
+            html += '<td class="' + cellClass + ' font-mono">' + escapeHtml(rd.grabs != null ? String(rd.grabs) : '--') + '</td>';
+            html += '<td class="' + cellClass + '">' + formatAge(rd.pub_date) + '</td>';
+        }
+        html += '<td class="px-5 py-3 text-right">';
+        html += '<div class="flex items-center justify-end gap-2">';
+        html += '<button onclick="downloadRelease(this, ' + storeRef + '[' + idx + '], \'' + safeSwId + '\')" ' +
+                'class="bg-zinc-700 hover:bg-zinc-600 px-3 py-1.5 rounded text-xs font-medium transition-colors">' +
+                'Download</button>';
+        html += '<button onclick="grabRelease(this, ' + storeRef + '[' + idx + '], \'' + safeSwId + '\')" ' +
+                'class="bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded text-xs font-medium transition-colors">' +
+                'Grab</button>';
+        html += '<a href="' + escapeAttr(r.source_origin || '#') + '" target="_blank" ' +
+                'class="text-zinc-400 hover:text-zinc-300 text-xs">Details</a>';
+        html += '</div>';
+        html += '<div class="dl-status mt-1 text-right text-xs"></div>';
+        html += '</td>';
+        html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    return html;
+}
+
+document.body.addEventListener('htmx:afterRequest', function(event) {
+    if (event.detail.target && event.detail.target.id === 'search-results') {
+        try {
+            const data = JSON.parse(event.detail.xhr.responseText);
+            const results = data.results || [];
+            const pirateResults = data.piracy_flagged || [];
+            const antipiracyEnabled = data.antipiracy_enabled || false;
+            const container = document.getElementById('search-results');
+            const softwareId = document.getElementById('search-software-id').value;
+
+            // Store results so onclick handlers can reference by index
+            window._searchResults = results;
+            window._pirateResults = pirateResults;
+
+            if (results.length === 0 && pirateResults.length === 0) {
+                container.innerHTML = '<div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800 text-center text-sm text-zinc-500">No releases found for this software entry and source.</div>';
+                return;
+            }
+
+            const allResults = results.concat(pirateResults);
+            const isUsenet = allResults[0] && allResults[0].source_type === 'usenet';
+
+            let html = '';
+            if (results.length > 0) {
+                html += buildResultsTable(results, window._searchResults, softwareId, isUsenet, false);
+            } else {
+                html += '<div class="bg-zinc-900 rounded-xl p-6 border border-zinc-800 text-center text-sm text-zinc-500">No clean releases found.</div>';
+            }
+
+            // Piracy-flagged section -- shown in a collapsible below clean results
+            if (antipiracyEnabled && pirateResults.length > 0) {
+                const pirateId = 'piracy-section-' + Date.now();
+                html += '<div class="mt-4">';
+                html += '<button onclick="togglePirateSection(\'' + pirateId + '\', this)" ' +
+                    'class="w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-sm font-medium ' +
+                    'bg-red-950/40 border border-red-900/50 text-red-400 hover:bg-red-950/60 transition-colors">' +
+                    '<span>Show ' + pirateResults.length + ' likely illegal result' + (pirateResults.length !== 1 ? 's' : '') +
+                    ' (anti-piracy filter active)</span>' +
+                    '<span class="toggle-icon">+</span>' +
+                    '</button>';
+                html += '<div id="' + pirateId + '" style="display:none" class="mt-2">';
+                html += '<div class="mb-2 px-3 py-2 rounded bg-red-950/30 border border-red-900/40 text-xs text-red-400">' +
+                    'WARNING: These results matched anti-piracy keyword filters. They may contain cracked, pirated, or otherwise ' +
+                    'illegal software. Downloading them may violate copyright law in your jurisdiction.' +
+                    '</div>';
+                html += buildResultsTable(pirateResults, window._pirateResults, softwareId, isUsenet, true);
+                html += '</div></div>';
+            }
+
+            container.innerHTML = html;
+        } catch(e) {
+            // Leave raw response if not JSON
+        }
+    }
+});
+
+function togglePirateSection(sectionId, btn) {
+    var el = document.getElementById(sectionId);
+    var icon = btn.querySelector('.toggle-icon');
+    if (el.style.display === 'none') {
+        el.style.display = 'block';
+        icon.textContent = '-';
+    } else {
+        el.style.display = 'none';
+        icon.textContent = '+';
+    }
+}
+
+// -------------------------------------------------------------------------
+// Search with optional grouping
+// -------------------------------------------------------------------------
+function doSearch() {
+    var swId = document.getElementById('search-software-id').value;
+    var srcType = document.getElementById('search-source-type').value;
+    var grouped = document.getElementById('group-toggle').checked;
+    var searchModeEl = document.getElementById('search-mode-select');
+    var filterQueryEl = document.getElementById('search-filter-query');
+    var searchMode = searchModeEl ? searchModeEl.value : 'standard';
+    var filterQuery = filterQueryEl ? filterQueryEl.value.trim() : '';
+    if (!swId) { showToast('Select a software entry first.', 'error'); return; }
+    var spinner = document.getElementById('search-spinner');
+    var container = document.getElementById('search-results');
+    spinner.style.display = 'block';
+    container.innerHTML = '';
+    var url = '/api/v1/releases/search?software_id=' + encodeURIComponent(swId) +
+              '&source_type=' + encodeURIComponent(srcType) +
+              (grouped ? '&grouped=true' : '') +
+              (searchMode !== 'standard' ? '&search_mode=' + encodeURIComponent(searchMode) : '') +
+              (filterQuery ? '&query=' + encodeURIComponent(filterQuery) : '');
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            spinner.style.display = 'none';
+            // Overwrite the raw result text so the HTMX afterSettle handler picks it up
+            container.setAttribute('data-raw-json', JSON.stringify(data));
+            container.dispatchEvent(new Event('softarr:results', { bubbles: true }));
+            // Trigger the existing rendering logic by faking the response
+            window._lastSearchData = data;
+            renderSearchResults(data, swId, container);
+        })
+        .catch(function(e) {
+            spinner.style.display = 'none';
+            container.innerHTML = '<p class="text-sm text-red-400">Search failed: ' + escapeHtml(e.message) + '</p>';
+        });
+}
+
+function renderSearchResults(data, swId, container) {
+    window._searchResults = data.results || [];
+    var results = window._searchResults;
+    if (!results.length) {
+        container.innerHTML = '<p class="text-sm text-zinc-500 text-center py-8">No results found.</p>';
+        return;
+    }
+    // If grouped data present, show group headers
+    if (data.grouped) {
+        var html = '';
+        Object.keys(data.grouped).forEach(function(groupName) {
+            html += '<div class="mb-4"><h4 class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2 px-1">' + escapeHtml(groupName) + '</h4>';
+            html += buildResultsTable(data.grouped[groupName], swId, false);
+            html += '</div>';
+        });
+        container.innerHTML = html;
+    } else {
+        container.innerHTML = buildResultsTable(results, swId, true);
+    }
+}
+
+function buildResultsTable(rows, swId, isRoot) {
+    var safeSwId = escapeAttr(swId || '');
+    // Detect if any result is usenet/torznab
+    var isUsenet = rows.some(function(r) { return r.source_type === 'usenet' || r.source_type === 'torznab'; });
+    var html = '<div class="bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800"><table class="w-full">';
+    html += '<thead class="bg-zinc-800/50"><tr>';
+    html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase">Name</th>';
+    html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase">Version</th>';
+    html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase">Publisher</th>';
+    html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase">Source</th>';
+    html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase">Score</th>';
+    if (isUsenet) {
+        html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase">Size</th>';
+        html += '<th scope="col" class="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase">Age</th>';
+    }
+    html += '<th scope="col" class="w-56 px-5 py-3"></th>';
+    html += '</tr></thead><tbody class="divide-y divide-zinc-800/50">';
+
+    // Map rows back to global index for button references
+    rows.forEach(function(r) {
+        var idx = window._searchResults.indexOf(r);
+        if (idx === -1) { window._searchResults.push(r); idx = window._searchResults.length - 1; }
+        var rd = r.raw_data || {};
+        var score = typeof r.confidence_score === 'number' ? r.confidence_score : (typeof rd.match_score === 'number' ? rd.match_score : null);
+        html += '<tr class="hover:bg-zinc-800/30 transition-colors">';
+        html += '<td class="px-5 py-3 text-sm font-medium">' + escapeHtml(r.display_name || r.name || '--') + '</td>';
+        html += '<td class="px-5 py-3 text-sm font-mono text-zinc-300">' + escapeHtml(r.version || '--') + '</td>';
+        html += '<td class="px-5 py-3 text-sm text-zinc-400">' + escapeHtml(r.publisher || '--') + '</td>';
+        html += '<td class="px-5 py-3 text-sm text-zinc-400">' + escapeHtml(r.source_type || '--') + '</td>';
+        html += '<td class="px-5 py-3 text-sm font-mono ' + (score !== null && score >= 0.7 ? 'text-brand-400' : 'text-zinc-400') + '">' + (score !== null ? score.toFixed(2) : '--') + '</td>';
+        if (isUsenet) {
+            html += '<td class="px-5 py-3 text-sm text-zinc-400 font-mono">' + formatSize(rd.size) + '</td>';
+            html += '<td class="px-5 py-3 text-sm text-zinc-400">' + formatAge(rd.pub_date) + '</td>';
+        }
+        html += '<td class="px-5 py-3 text-right">';
+        html += '<div class="flex items-center justify-end gap-2">';
+        html += '<button onclick="downloadRelease(this, window._searchResults[' + idx + '], \'' + safeSwId + '\')" ' +
+                'class="bg-zinc-700 hover:bg-zinc-600 px-3 py-1.5 rounded text-xs font-medium transition-colors">' +
+                'Download</button>';
+        html += '<button onclick="grabRelease(this, window._searchResults[' + idx + '], \'' + safeSwId + '\')" ' +
+                'class="bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded text-xs font-medium transition-colors">' +
+                'Grab</button>';
+        html += '<a href="' + escapeAttr(r.source_origin || '#') + '" target="_blank" class="text-zinc-400 hover:text-zinc-300 text-xs">Details</a>';
+        html += '</div>';
+        html += '<div class="dl-status mt-1 text-right text-xs"></div>';
+        html += '</td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    return html;
+}
+
+// -------------------------------------------------------------------------
+// Grab flow: process -> grab (approve + queue in one step)
+// -------------------------------------------------------------------------
+function grabRelease(btn, result, softwareId) {
+    if (!softwareId) { showToast('Select a software entry first.', 'error'); return; }
+    var statusEl = btn.closest('td').querySelector('.dl-status');
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+    statusEl.textContent = '';
+
+    // Step 1: Process and store the release
+    fetch('/api/v1/releases/process?software_id=' + encodeURIComponent(softwareId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+        body: JSON.stringify(result),
+    })
+    .then(function(resp) {
+        if (!resp.ok) return resp.json().then(function(d) { throw new Error(d.detail || 'Processing failed'); });
+        return resp.json();
+    })
+    .then(function(release) {
+        btn.textContent = 'Grabbing...';
+        // Step 2: Transition to STAGED and UNDER_REVIEW so grab can approve
+        return transitionRelease(release.id, 'staged')
+            .then(function() { return transitionRelease(release.id, 'under_review'); })
+            .then(function() { return release; });
+    })
+    .then(function(release) {
+        // Step 3: Grab = approve + queue in one call
+        return fetch('/api/v1/actions/grab/' + encodeURIComponent(release.id), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+        });
+    })
+    .then(function(resp) {
+        if (!resp.ok) return resp.json().then(function(d) { throw new Error(d.detail || 'Grab failed'); });
+        return resp.json();
+    })
+    .then(function() {
+        btn.textContent = 'Grabbed';
+        btn.classList.remove('bg-brand-600', 'hover:bg-brand-700');
+        btn.classList.add('bg-zinc-700', 'cursor-default');
+        statusEl.innerHTML = '<span class="text-green-400">Queued for download</span>';
+        showToast('Queued for download successfully.', 'success');
+        startPolling();
+    })
+    .catch(function(err) {
+        btn.disabled = false;
+        btn.textContent = 'Grab';
+        statusEl.innerHTML = '<span class="text-red-400">' + escapeHtml(err.message) + '</span>';
+        showToast(err.message, 'error');
+    });
+}
+
+// -------------------------------------------------------------------------
+// Download flow: process -> send to active download client
+// -------------------------------------------------------------------------
+function downloadRelease(btn, result, softwareId) {
+    if (!softwareId) {
+        showToast('Select a software entry first.', 'error');
+        return;
+    }
+
+    const statusEl = btn.closest('td').querySelector('.dl-status');
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+    statusEl.textContent = '';
+
+    // Step 1: Process and store the release
+    fetch('/api/v1/releases/process?software_id=' + encodeURIComponent(softwareId), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': getCsrfToken(),
+        },
+        body: JSON.stringify(result),
+    })
+    .then(function(resp) {
+        if (!resp.ok) {
+            return resp.json().then(function(d) {
+                throw new Error(d.detail || 'Processing failed');
+            }).catch(function(e) {
+                if (e.message !== 'Processing failed') throw new Error('Processing failed (HTTP ' + resp.status + ')');
+                throw e;
+            });
+        }
+        return resp.json();
+    })
+    .then(function(release) {
+        btn.textContent = 'Queuing...';
+        console.log('[softarr] Release processed:', release.id);
+        // Step 2: Fast-path the release through the workflow to APPROVED state
+        // (DISCOVERED -> STAGED -> UNDER_REVIEW -> APPROVED)
+        return transitionRelease(release.id, 'staged')
+            .then(function() { return transitionRelease(release.id, 'under_review'); })
+            .then(function() { return approveRelease(release.id); })
+            .then(function() { return release; });
+    })
+    .then(function(release) {
+        console.log('[softarr] Release approved, sending to SABnzbd:', release.id);
+        // Step 3: Send to SABnzbd
+        return fetch('/api/v1/actions/sabnzbd/send', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': getCsrfToken(),
+            },
+            body: JSON.stringify({ release_id: release.id, download_url: null }),
+        });
+    })
+    .then(function(resp) {
+        if (!resp.ok) {
+            return resp.json().then(function(d) {
+                throw new Error(d.detail || 'SABnzbd send failed');
+            }).catch(function(e) {
+                if (e.message !== 'SABnzbd send failed') throw new Error('SABnzbd send failed (HTTP ' + resp.status + ')');
+                throw e;
+            });
+        }
+        return resp.json();
+    })
+    .then(function() {
+        btn.textContent = 'Queued';
+        btn.classList.remove('bg-brand-600', 'hover:bg-brand-700');
+        btn.classList.add('bg-zinc-700', 'cursor-default');
+        statusEl.innerHTML = '<span class="text-green-400">Queued in SABnzbd</span>';
+        showToast('Queued in SABnzbd successfully.', 'success');
+        startPolling();
+    })
+    .catch(function(err) {
+        console.error('[softarr] Download failed:', err);
+        btn.disabled = false;
+        btn.textContent = 'Download';
+        statusEl.innerHTML = '<span class="text-red-400">' + escapeHtml(err.message) + '</span>';
+        showToast(err.message, 'error');
+    });
+}
+
+function transitionRelease(releaseId, targetState) {
+    return fetch('/api/v1/staging/transition/' + encodeURIComponent(releaseId), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': getCsrfToken(),
+        },
+        body: JSON.stringify({ target_state: targetState }),
+    }).then(function(resp) {
+        if (!resp.ok) {
+            return resp.json().then(function(d) { throw new Error(d.detail || 'Transition failed'); });
+        }
+        return resp.json();
+    });
+}
+
+function approveRelease(releaseId) {
+    return fetch('/api/v1/staging/approve/' + encodeURIComponent(releaseId), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': getCsrfToken(),
+        },
+    }).then(function(resp) {
+        if (!resp.ok) {
+            return resp.json().then(function(d) { throw new Error(d.detail || 'Approval failed'); });
+        }
+        return resp.json();
+    });
+}
+
+// -------------------------------------------------------------------------
+// SABnzbd progress polling
+// -------------------------------------------------------------------------
+var _pollInterval = null;
+
+function startPolling() {
+    document.getElementById('progress-panel').classList.remove('hidden');
+    if (_pollInterval) return;
+    pollQueue();
+    _pollInterval = setInterval(pollQueue, 5000);
+}
+
+function stopPolling() {
+    if (_pollInterval) {
+        clearInterval(_pollInterval);
+        _pollInterval = null;
+    }
+    document.getElementById('progress-panel').classList.add('hidden');
+    document.getElementById('progress-items').innerHTML = '';
+}
+
+function pollQueue() {
+    fetch('/api/v1/actions/sabnzbd/queue')
+        .then(function(resp) {
+            if (!resp.ok) throw new Error('Queue fetch failed');
+            return resp.json();
+        })
+        .then(function(data) {
+            var items = data.queue || [];
+            var container = document.getElementById('progress-items');
+
+            if (items.length === 0) {
+                container.innerHTML = '<p class="text-sm text-zinc-500">Queue is empty -- all downloads complete.</p>';
+                // Auto-dismiss after a short delay
+                setTimeout(stopPolling, 4000);
+                return;
+            }
+
+            var html = '';
+            items.forEach(function(item) {
+                var pct = item.percentage || 0;
+                html += '<div class="space-y-1">';
+                html += '<div class="flex justify-between text-xs text-zinc-400">';
+                html += '<span class="truncate max-w-xs">' + escapeHtml(item.filename) + '</span>';
+                html += '<span class="ml-4 shrink-0">' + pct + '% &bull; ' + escapeHtml(item.mb_left + ' MB left') + '</span>';
+                html += '</div>';
+                html += '<div class="w-full bg-zinc-700 rounded-full h-1.5">';
+                html += '<div class="bg-brand-500 h-1.5 rounded-full transition-all" style="width:' + pct + '%"></div>';
+                html += '</div>';
+                if (item.timeleft) {
+                    html += '<div class="text-xs text-zinc-500">' + escapeHtml(item.status) + ' &bull; ETA ' + escapeHtml(item.timeleft) + '</div>';
+                }
+                html += '</div>';
+            });
+            container.innerHTML = html;
+        })
+        .catch(function() {
+            // Silently ignore poll failures
+        });
+}
+
+// -------------------------------------------------------------------------
+// Formatting helpers
+// -------------------------------------------------------------------------
+function formatSize(bytes) {
+    var n = parseInt(bytes, 10);
+    if (!n || isNaN(n)) return '--';
+    if (n >= 1073741824) return (n / 1073741824).toFixed(1) + ' GB';
+    return Math.round(n / 1048576) + ' MB';
+}
+
+function formatAge(pubDate) {
+    if (!pubDate) return '--';
+    var d = new Date(pubDate);
+    if (isNaN(d.getTime())) return '--';
+    var days = Math.floor((Date.now() - d.getTime()) / 86400000);
+    if (days <= 0) return 'today';
+    if (days === 1) return '1 day ago';
+    return days + ' days ago';
+}
+
+// -------------------------------------------------------------------------
+// Utilities
+// -------------------------------------------------------------------------
+function showToast(message, type) {
+    var toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className = 'fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg text-sm font-medium shadow-lg transition-all ';
+    toast.className += (type === 'error')
+        ? 'bg-red-900/80 text-red-200 border border-red-700'
+        : 'bg-green-900/80 text-green-200 border border-green-700';
+    toast.classList.remove('hidden');
+    setTimeout(function() { toast.classList.add('hidden'); }, 4000);
+}
+
+function getCsrfToken() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function escapeAttr(str) {
+    return String(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+</script>
+{% endblock %}

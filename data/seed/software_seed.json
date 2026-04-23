@@ -1,0 +1,52 @@
+[
+  {
+    "canonical_name": "VS Code",
+    "aliases": ["vscode", "visualstudiocode", "visual-studio-code"],
+    "expected_publisher": "Microsoft",
+    "supported_os": ["windows", "linux", "macos"],
+    "architecture": "x64",
+    "version_format_rules": {},
+    "source_preferences": ["github"],
+    "notes": "Official Visual Studio Code editor"
+  },
+  {
+    "canonical_name": "Node.js",
+    "aliases": ["node", "nodejs"],
+    "expected_publisher": "OpenJS Foundation",
+    "supported_os": ["windows", "linux", "macos"],
+    "architecture": "x64",
+    "version_format_rules": {},
+    "source_preferences": ["vendor", "github"],
+    "notes": "JavaScript runtime built on V8"
+  },
+  {
+    "canonical_name": "7-Zip",
+    "aliases": ["7zip", "sevenzip"],
+    "expected_publisher": "Igor Pavlov",
+    "supported_os": ["windows", "linux"],
+    "architecture": "x64",
+    "version_format_rules": {},
+    "source_preferences": ["vendor"],
+    "notes": "Open source file archiver"
+  },
+  {
+    "canonical_name": "Git",
+    "aliases": ["git-scm"],
+    "expected_publisher": "Software Freedom Conservancy",
+    "supported_os": ["windows", "linux", "macos"],
+    "architecture": "x64",
+    "version_format_rules": {},
+    "source_preferences": ["github", "vendor"],
+    "notes": "Distributed version control system"
+  },
+  {
+    "canonical_name": "Python",
+    "aliases": ["cpython", "python3"],
+    "expected_publisher": "Python Software Foundation",
+    "supported_os": ["windows", "linux", "macos"],
+    "architecture": "x64",
+    "version_format_rules": {},
+    "source_preferences": ["vendor"],
+    "notes": "Python programming language"
+  }
+]

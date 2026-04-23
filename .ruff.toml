@@ -1,0 +1,21 @@
+exclude = [
+    ".git",
+    ".ruff_cache",
+    ".venv",
+    "__pypackages__",
+    "tmp",
+    "dev",
+    "/locales"
+]
+
+[lint]
+# "F": Pyflakes errors (e.g., undefined names, unused imports)
+# "E": pycodestyle errors
+# "W": pycodestyle warnings
+# "I001": isort formatting rule for import sorting
+# "F401": Specific rule for unused imports
+select = ["F", "E", "W", "I001", "F401"]
+
+# E501 is line length, we don't care about that if we can't fix it
+# F841 is unused variable, we don't care about that if we can't fix it
+ignore = ["E501", "F841"]
