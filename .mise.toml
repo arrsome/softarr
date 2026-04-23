@@ -95,11 +95,25 @@ depends = ["lint", "lint_format", "test"]
 [tasks.dev]
 alias = ["d", "serve", "uvicorn"]
 description = "Run uvicorn with --reload on 127.0.0.1:8000."
+depends = ["first_init"]
 run = "uvicorn softarr.main:app --reload --host 127.0.0.1 --port 8000"
 
 [tasks.init]
 description = "First-boot init: create tables, softarr.ini, and admin user."
 run = "softarr-init"
+
+[tasks.first_init]
+description = "If the dev/softarr.db file does not exist, it will run init"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+if [ ! -f dev/softarr.db ]; then
+  echo "dev/softarr.db not found -- running init..."
+  mise run init
+else
+  echo "dev/softarr.db already exists -- skipping init."
+fi
+'''
 
 # ---------------------------------------------------------------------------
 # Alembic migrations
