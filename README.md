@@ -1,6 +1,19 @@
 # Softarr
 
-**Software Release Manager -- v1.3.18**
+![Version](https://img.shields.io/badge/version-v1.0.0-blue)
+![License](https://img.shields.io/github/license/arrsome/softarr)
+![Last Commit](https://img.shields.io/github/last-commit/arrsome/softarr)
+![Issues](https://img.shields.io/github/issues/arrsome/softarr)
+![Pull Requests](https://img.shields.io/github/issues-pr/arrsome/softarr)
+![Docker](https://img.shields.io/badge/docker-supported-blue)
+![Python](https://img.shields.io/badge/python-3.14+-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-async-green)
+![Security](https://img.shields.io/badge/security-focused-critical)
+![Auth](https://img.shields.io/badge/auth-2FA_enabled-green)
+![API](https://img.shields.io/badge/API-OpenAPI-informational)
+![ARR Inspired](https://img.shields.io/badge/inspired_by-ARR_stack-purple)
+
+**Software Release Manager -- v1.0.0**
 
 A production-oriented tool for tracking, analysing, and safely managing software releases. Inspired by the *arr stack (Sonarr, Radarr, Lidarr) but built for software with emphasis on structured data, verification, risk visibility, staged approvals, and audit logging.
 
