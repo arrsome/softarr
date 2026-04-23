@@ -69,6 +69,19 @@ class TestVerifyTotpCode:
         code = totp.now()
         assert verify_totp_code(stored, code) is True
 
+    def test_code_from_one_interval_ago_passes(self):
+        """A code generated 30 seconds ago should still verify (drift window = ±60 s)."""
+        import time
+
+        import pyotp
+
+        raw = generate_totp_secret()
+        stored = encrypt_secret(raw)
+        totp = pyotp.TOTP(raw)
+        # Generate a code valid for the previous 30-second window.
+        code = totp.at(for_time=time.time() - 30)
+        assert verify_totp_code(stored, code) is True
+
     def test_wrong_code_fails(self):
         raw = generate_totp_secret()
         stored = encrypt_secret(raw)

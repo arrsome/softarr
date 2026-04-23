@@ -238,19 +238,26 @@ async def totp_setup_page(
     ini = get_ini_settings()
     issuer = ini.get("totp_issuer") or "Softarr"
 
-    # If already has a pending (not-yet-confirmed) secret, reuse it;
-    # otherwise generate a fresh one.
-    if db_user.totp_secret and not db_user.totp_enabled:
-        from softarr.auth.totp import decrypt_secret
+    from softarr.auth.totp import decrypt_secret
 
+    if db_user.totp_enabled:
+        # Already enrolled -- do not regenerate or overwrite the confirmed secret.
+        # The template renders a "2FA is active" message when totp_enabled=True.
+        raw_secret = None
+    elif db_user.totp_secret:
+        # Pending enrolment: reuse existing secret so the QR doesn't change on reload.
         raw_secret = decrypt_secret(db_user.totp_secret)
         if not raw_secret:
+            # Stored value is corrupt or signed with a different SECRET_KEY.
             raw_secret = await service.enable_totp(user_id)
     else:
+        # First visit: generate a fresh secret.
         raw_secret = await service.enable_totp(user_id)
 
-    qr_b64 = generate_qr_png_b64(raw_secret, db_user.username, issuer)
-    manual_key = raw_secret  # shown to user for manual entry
+    qr_b64 = (
+        generate_qr_png_b64(raw_secret, db_user.username, issuer) if raw_secret else ""
+    )
+    manual_key = raw_secret or ""
 
     from softarr.main import _template_context, templates
 

@@ -25,7 +25,7 @@ _signer = URLSafeSerializer(settings.SECRET_KEY, salt="totp-secret")
 TOTP_ISSUER_DEFAULT = "Softarr"
 TOTP_DIGITS = 6
 TOTP_INTERVAL = 30
-TOTP_VALID_WINDOW = 1  # allow ±1 interval (±30 s) for clock drift
+TOTP_VALID_WINDOW = 2  # allow ±2 intervals (±60 s) for clock drift
 
 
 def generate_totp_secret() -> str:
