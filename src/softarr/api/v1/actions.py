@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from softarr.auth.dependencies import require_admin
 from softarr.core.database import get_db
 from softarr.core.ini_settings import IniSettingsManager, get_ini_settings
+from softarr.integrations.qbittorrent import QBittorrentError
+from softarr.integrations.sabnzbd import SABnzbdError
 from softarr.middleware.rate_limit import limiter
 from softarr.schemas.integrations import (
     ActionRequest,
@@ -17,8 +19,6 @@ from softarr.schemas.integrations import (
     SABnzbdConfigUpdate,
     SABnzbdSendRequest,
 )
-from softarr.integrations.qbittorrent import QBittorrentError
-from softarr.integrations.sabnzbd import SABnzbdError
 from softarr.services.action_service import ActionError, ActionService
 from softarr.services.audit_service import AuditService
 
