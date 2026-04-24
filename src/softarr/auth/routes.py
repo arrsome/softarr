@@ -1,5 +1,7 @@
 """Auth routes: login, logout, 2FA enrolment, 2FA verification."""
 
+import logging
+
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +18,8 @@ from softarr.auth.sessions import (
 )
 from softarr.core.database import get_db
 from softarr.middleware.csrf import get_csrf_token
+
+_log = logging.getLogger("softarr.auth.routes")
 
 router = APIRouter()
 
@@ -291,6 +295,12 @@ async def totp_setup_confirm(
     user_id = UUID(user["uid"])
 
     if not await service.confirm_totp_enrolment(user_id, code):
+        _log.warning(
+            "TOTP setup confirm rejected username=%s user_id=%s code_len=%d",
+            user.get("u", "<unknown>"),
+            user_id,
+            len(code),
+        )
         from softarr.auth.totp import decrypt_secret, generate_qr_png_b64
         from softarr.core.ini_settings import get_ini_settings
 

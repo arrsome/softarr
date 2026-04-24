@@ -61,11 +61,26 @@ def verify_totp_code(stored_secret: str, code: str) -> bool:
 
     Returns True if the code is valid within the allowed clock-drift window.
     """
+    import time
+    from datetime import datetime, timezone
+
     raw = decrypt_secret(stored_secret)
     if not raw:
         return False
     totp = pyotp.TOTP(raw, digits=TOTP_DIGITS, interval=TOTP_INTERVAL)
-    return totp.verify(code, valid_window=TOTP_VALID_WINDOW)
+    result = totp.verify(code, valid_window=TOTP_VALID_WINDOW)
+    now_utc = datetime.now(timezone.utc)
+    window_position = int(time.time()) % TOTP_INTERVAL
+    logger.debug(
+        "TOTP verify: result=%s code_len=%d digits_only=%s "
+        "server_utc=%s window_position=%ds/30s",
+        result,
+        len(code),
+        code.isdigit(),
+        now_utc.isoformat(),
+        window_position,
+    )
+    return result
 
 
 def get_totp_uri(

@@ -17,6 +17,8 @@ from softarr.schemas.integrations import (
     SABnzbdConfigUpdate,
     SABnzbdSendRequest,
 )
+from softarr.integrations.qbittorrent import QBittorrentError
+from softarr.integrations.sabnzbd import SABnzbdError
 from softarr.services.action_service import ActionError, ActionService
 from softarr.services.audit_service import AuditService
 
@@ -92,7 +94,7 @@ async def test_sabnzbd_connection(
     try:
         result = await action.test_sabnzbd_connection()
         return {"status": "ok", **result}
-    except ActionError as e:
+    except (ActionError, SABnzbdError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -247,7 +249,7 @@ async def test_qbittorrent_connection(
     try:
         result = await action.test_qbittorrent_connection()
         return {"status": "ok", **result}
-    except ActionError as exc:
+    except (ActionError, QBittorrentError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
 

@@ -9,6 +9,7 @@ To use a pre-hashed password instead, set ADMIN_PASSWORD_HASH in the
 environment; that path skips the default entirely.
 """
 
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
@@ -20,6 +21,8 @@ from softarr.auth.passwords import hash_password, verify_password
 from softarr.core.config import settings
 from softarr.core.logging import logger
 from softarr.models.user import User
+
+_log = logging.getLogger("softarr.auth.service")
 
 
 class AuthService:
@@ -188,12 +191,31 @@ class AuthService:
         from softarr.auth.totp import verify_totp_code
 
         user = await self.get_user_by_id(user_id)
-        if not user or not user.totp_secret:
+        if not user:
+            _log.warning(
+                "TOTP enrolment confirm failed: user not found user_id=%s", user_id
+            )
+            return False
+        if not user.totp_secret:
+            _log.warning(
+                "TOTP enrolment confirm failed: no totp_secret stored user_id=%s "
+                "totp_enabled=%s",
+                user_id,
+                user.totp_enabled,
+            )
             return False
         if not verify_totp_code(user.totp_secret, code):
+            _log.warning(
+                "TOTP enrolment confirm failed: code rejected user_id=%s "
+                "code_len=%d digits_only=%s",
+                user_id,
+                len(code),
+                code.isdigit(),
+            )
             return False
         user.totp_enabled = True
         await self.db.commit()
+        _log.info("TOTP enrolment confirmed user_id=%s", user_id)
         return True
 
     async def disable_totp(self, user_id: UUID) -> bool:
@@ -211,9 +233,29 @@ class AuthService:
         from softarr.auth.totp import verify_totp_code
 
         user = await self.get_user_by_id(user_id)
-        if not user or not user.totp_enabled or not user.totp_secret:
+        if not user:
+            _log.warning("TOTP login verify failed: user not found user_id=%s", user_id)
             return False
-        return verify_totp_code(user.totp_secret, code)
+        if not user.totp_enabled:
+            _log.warning(
+                "TOTP login verify failed: totp_enabled=False user_id=%s", user_id
+            )
+            return False
+        if not user.totp_secret:
+            _log.warning(
+                "TOTP login verify failed: no totp_secret stored user_id=%s", user_id
+            )
+            return False
+        result = verify_totp_code(user.totp_secret, code)
+        if not result:
+            _log.warning(
+                "TOTP login verify failed: code rejected user_id=%s "
+                "code_len=%d digits_only=%s",
+                user_id,
+                len(code),
+                code.isdigit(),
+            )
+        return result
 
     # ------------------------------------------------------------------
     # Legal disclaimer
