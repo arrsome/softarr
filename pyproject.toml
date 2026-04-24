@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "softarr"
-version = "1.3.18"
+version = "1.0.1"
 description = "Software Release Manager inspired by the *arr stack"
 readme = "README.md"
 requires-python = ">=3.14"

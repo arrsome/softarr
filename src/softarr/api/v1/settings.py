@@ -298,10 +298,15 @@ async def get_system_health(
                 headers={"Accept": "application/vnd.github+json"},
             )
             if resp.status_code == 200:
+                from softarr.utils.version import compare_versions
+
                 data = resp.json()
                 raw_tag = data.get("tag_name") or ""
                 version_latest = raw_tag.lstrip("v") or None
-                version_ok = bool(version_latest and version_latest == _APP_VERSION)
+                version_ok = bool(
+                    version_latest
+                    and compare_versions(_APP_VERSION, version_latest) >= 0
+                )
             else:
                 version_error = f"GitHub API returned {resp.status_code}"
     except Exception as exc:
